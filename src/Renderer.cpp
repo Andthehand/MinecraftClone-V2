@@ -26,29 +26,25 @@ Renderer::Renderer(Device& device, Swapchain& swapchain)
 
 	m_Pool = std::make_unique<TransientResourcePool>(m_Device, 64ull * 1024 * 1024);
 
-	constexpr uint64_t chunkVolume = static_cast<uint64_t>(CHUNK_SIZE) * CHUNK_SIZE * CHUNK_SIZE;
-	std::vector<uint32_t> chunkData(chunkVolume, 0);
 	const float center = static_cast<float>(CHUNK_SIZE) * 0.5f;
 	const float radius = static_cast<float>(CHUNK_SIZE) * 0.45f;
 	const float radiusSquared = radius * radius;
 	for (uint32_t z = 0; z < CHUNK_SIZE; ++z) {
 		for (uint32_t y = 0; y < CHUNK_SIZE; ++y) {
 			for (uint32_t x = 0; x < CHUNK_SIZE; ++x) {
-				const uint64_t index = x + static_cast<uint64_t>(y) * CHUNK_SIZE +
-					static_cast<uint64_t>(z) * CHUNK_SIZE * CHUNK_SIZE;
-
 				const float dx = (static_cast<float>(x) + 0.5f) - center;
 				const float dy = (static_cast<float>(y) + 0.5f) - center;
 				const float dz = (static_cast<float>(z) + 0.5f) - center;
 				const float distanceSquared = dx * dx + dy * dy + dz * dz;
 
-				chunkData[index] = distanceSquared <= radiusSquared ? 1u : 0u;
+				m_ChunkOctree.SetVoxel(x, y, z, distanceSquared <= radiusSquared ? 1u : 0u);
 			}
 		}
 	}
 
+	const std::vector<GpuOctreeNode> chunkData = m_ChunkOctree.ToGpuNodes();
 	m_Device.CreateBuffer(BufferDesc{
-		.size = chunkVolume * sizeof(uint32_t),
+		.size = chunkData.size() * sizeof(GpuOctreeNode),
 		.usage = BufferUsage::Storage,
 		.memoryUsage = MemoryUsage::CPUToGPU,
 		.initialData = chunkData.data(),
@@ -89,7 +85,7 @@ bool Renderer::DrawFrame(const FrameContext& frameContext) {
 		Parameters params{
 			.width = frameContext.width,
 			.height = frameContext.height,
-			.chunkSize = CHUNK_SIZE,
+			.chunkSize = m_ChunkOctree.GetSideLength(),
 			.time = time,
 			.chunkBufferIndex = m_ChunkBuffer->GetDescriptorIndex(),
 			.backBufferIndex = graph.GetTexture(backBufferResource)->GetStorageImageDescriptorIndex(),
