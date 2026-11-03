@@ -1,0 +1,3 @@
+[submodule "external/RealRHI"]
+	path = external/RealRHI
+	url = https://github.com/Andthehand/RealRHI.git
