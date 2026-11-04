@@ -2,7 +2,7 @@
 
 #include <RenderGraph/RenderGraph.h>
 
-#include <chrono>
+#include <cmath>
 #include <iostream>
 #include <vector>
 
@@ -56,13 +56,20 @@ struct Parameters {
 	uint32_t width;
 	uint32_t height;
 	uint32_t chunkSize;
-	float time;
+	uint32_t padding;
 
+	float cameraPosition[4];
+	float cameraForward[4];
+	float cameraRight[4];
+	float cameraUp[4];
+
+	float tanHalfFovY;
+	float aspect;
 	uint32_t chunkBufferIndex;
 	uint32_t backBufferIndex;
 };
 
-bool Renderer::DrawFrame(const FrameContext& frameContext) {
+bool Renderer::DrawFrame(const FrameContext& frameContext, const Camera& camera) {
 	RenderGraph graph;
 
 	RenderGraphResource chunkBufferResource = graph.ImportBuffer(m_ChunkBuffer.Raw());
@@ -78,15 +85,25 @@ bool Renderer::DrawFrame(const FrameContext& frameContext) {
 			RenderGraphUse{ backBufferResource, computeWrite, TextureLayout::General, RenderGraphAccess::Write },
 		},
 	}, [&](CommandList& commands) {
-		static const auto startTime = std::chrono::system_clock::now();
-		auto now = std::chrono::system_clock::now();
-		float time = std::chrono::duration<float>(now - startTime).count();
+		const Vec3 position = camera.GetPosition();
+		const Vec3 forward = camera.GetForward();
+		const Vec3 right = camera.GetRight();
+		const Vec3 up = camera.GetUp();
+
+		const float aspect = frameContext.height == 0 ? 1.0f : static_cast<float>(frameContext.width) / static_cast<float>(frameContext.height);
+		const float tanHalfFovY = std::tan(camera.GetFovYRadians() * 0.5f);
 
 		Parameters params{
 			.width = frameContext.width,
 			.height = frameContext.height,
 			.chunkSize = m_ChunkOctree.GetSideLength(),
-			.time = time,
+			.padding = 0u,
+			.cameraPosition = { position.x, position.y, position.z, 0.0f },
+			.cameraForward = { forward.x, forward.y, forward.z, 0.0f },
+			.cameraRight = { right.x, right.y, right.z, 0.0f },
+			.cameraUp = { up.x, up.y, up.z, 0.0f },
+			.tanHalfFovY = tanHalfFovY,
+			.aspect = aspect,
 			.chunkBufferIndex = m_ChunkBuffer->GetDescriptorIndex(),
 			.backBufferIndex = graph.GetTexture(backBufferResource)->GetStorageImageDescriptorIndex(),
 		};

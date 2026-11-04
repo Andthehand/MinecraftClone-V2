@@ -3,9 +3,11 @@ using namespace RealRHI;
 
 #include <SDL3/SDL.h>
 
+#include <chrono>
 #include <iostream>
 #include <print> // required for std::println
 
+#include "Camera.h"
 #include "Renderer.h"
 
 void CaptureDebugMessage(const DebugMessage& message) {
@@ -73,7 +75,9 @@ int main() {
 	}
 
 	Renderer renderer(*device, *swapchain);
+	Camera camera;
 
+	auto previousFrameTime = std::chrono::steady_clock::now();
 	bool running = true;
 	while (running) {
 		SDL_Event event;
@@ -86,6 +90,20 @@ int main() {
 			break;
 		}
 
+		auto currentFrameTime = std::chrono::steady_clock::now();
+		const float deltaTime = std::chrono::duration<float>(currentFrameTime - previousFrameTime).count();
+		previousFrameTime = currentFrameTime;
+
+		const bool* keyboard = SDL_GetKeyboardState(nullptr);
+		const float moveForward = (keyboard[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_S] ? 1.0f : 0.0f);
+		const float moveRight = (keyboard[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_A] ? 1.0f : 0.0f);
+		const float moveUp = (keyboard[SDL_SCANCODE_SPACE] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_LCTRL] ? 1.0f : 0.0f);
+		const float yawInput = (keyboard[SDL_SCANCODE_RIGHT] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_LEFT] ? 1.0f : 0.0f);
+		const float pitchInput = (keyboard[SDL_SCANCODE_UP] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_DOWN] ? 1.0f : 0.0f);
+
+		camera.MoveLocal(moveForward * 8.0f * deltaTime, moveRight * 8.0f * deltaTime, moveUp * 8.0f * deltaTime);
+		camera.AddYawPitch(yawInput * 1.8f * deltaTime, pitchInput * 1.8f * deltaTime);
+
 		const FrameContext frame = swapchain->BeginFrame();
 		if (!frame.backBufferView) {
 			if (window->IsMinimized() || window->GetWidth() == 0 || window->GetHeight() == 0) {
@@ -95,7 +113,7 @@ int main() {
 			std::cerr << "Failed to acquire a backbuffer.\n";
 			return 1;
 		}
-		if (!renderer.DrawFrame(frame)) {
+		if (!renderer.DrawFrame(frame, camera)) {
 			return 1;
 		}
 	}

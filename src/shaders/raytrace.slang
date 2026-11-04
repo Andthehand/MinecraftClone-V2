@@ -2,8 +2,15 @@ struct ComputeParameters {
     uint width;
     uint height;
     uint chunkSize;
-    float time;
+    uint padding;
 
+    float4 cameraPosition;
+    float4 cameraForward;
+    float4 cameraRight;
+    float4 cameraUp;
+
+    float tanHalfFovY;
+    float aspect;
     uint chunkBufferIndex;
     uint outputTextureIndex;
 };
@@ -20,35 +27,21 @@ Ray GeneratePrimaryRay(
     uint2 pixel,
     uint width,
     uint height,
-    uint chunkSize,
-    float time)
-{
+    float3 cameraPosition,
+    float3 cameraForward,
+    float3 cameraRight,
+    float3 cameraUp,
+    float tanHalfFovY,
+    float aspect) {
     float2 resolution = float2((float)width, (float)height);
     float2 uv = (float2(pixel) + 0.5f) / resolution;
     float2 ndc = uv * 2.0f - 1.0f;
     ndc.y = -ndc.y;
 
-    float aspect = resolution.x / resolution.y;
-    float tanHalfFovY = tan(radians(70.0f) * 0.5f);
-
-    float3 target = float3((float)chunkSize * 0.5f);
-    float orbitRadius = (float)chunkSize * 1.2f;
-    float angle = time * 0.5f;
-
-    float3 cameraPosition = target + float3(
-        cos(angle) * orbitRadius,
-        (float)chunkSize * 0.75f,
-        sin(angle) * orbitRadius);
-
-    float3 forward = normalize(target - cameraPosition);
-    float3 right = normalize(
-        cross(float3(0.0f, 1.0f, 0.0f), forward));
-    float3 up = normalize(cross(forward, right));
-
     float3 direction = normalize(
-        forward +
-        right * (ndc.x * aspect * tanHalfFovY) +
-        up * (ndc.y * tanHalfFovY));
+        cameraForward +
+        cameraRight * (ndc.x * aspect * tanHalfFovY) +
+        cameraUp * (ndc.y * tanHalfFovY));
 
     return Ray(cameraPosition, direction);
 }
@@ -293,8 +286,12 @@ void computeMain(uint3 threadId : SV_DispatchThreadID) {
         pixel,
         parameters.width,
         parameters.height,
-        parameters.chunkSize,
-        parameters.time);
+        parameters.cameraPosition.xyz,
+        parameters.cameraForward.xyz,
+        parameters.cameraRight.xyz,
+        parameters.cameraUp.xyz,
+        parameters.tanHalfFovY,
+        parameters.aspect);
 
     uint voxelId;
     int3 voxel;
