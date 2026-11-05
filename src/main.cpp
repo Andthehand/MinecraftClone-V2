@@ -8,6 +8,7 @@ using namespace RealRHI;
 #include <print> // required for std::println
 
 #include "Camera.h"
+#include "Options.h"
 #include "Renderer.h"
 
 void CaptureDebugMessage(const DebugMessage& message) {
@@ -48,10 +49,10 @@ void CaptureDebugMessage(const DebugMessage& message) {
 int main() {
 	std::unique_ptr<Device> device;
 	if (Device::Create(DeviceDesc{
-			.applicationName = "Minecraft Clone",
-			.shaderDirectory = "shaders",
-			.enableDebug = true,
-			.enableValidationLayers = true,
+			.applicationName = Options::Application::NAME,
+			.shaderDirectory = Options::Application::SHADER_DIRECTORY,
+			.enableDebug = Options::Application::ENABLE_DEBUG,
+			.enableValidationLayers = Options::Application::ENABLE_DEBUG,
 			.debugCallback = CaptureDebugMessage,
 		}, device) != Result::Success) {
 		std::cerr << "Failed to create device.\n";
@@ -60,9 +61,9 @@ int main() {
 
 	Ref<Window> window;
 	if (device->CreateWindow(WindowDesc{
-			.title = "Minecraft Clone",
-			.width = 800,
-			.height = 600,
+			.title = Options::Application::NAME,
+			.width = Options::Application::WINDOW_WIDTH,
+			.height = Options::Application::WINDOW_HEIGHT,
 		}, window) != Result::Success) {
 		std::cerr << "Failed to create window.\n";
 		return 1;
@@ -101,13 +102,14 @@ int main() {
 		const float yawInput = (keyboard[SDL_SCANCODE_RIGHT] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_LEFT] ? 1.0f : 0.0f);
 		const float pitchInput = (keyboard[SDL_SCANCODE_UP] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_DOWN] ? 1.0f : 0.0f);
 
-		camera.MoveLocal(moveForward * 8.0f * deltaTime, moveRight * 8.0f * deltaTime, moveUp * 8.0f * deltaTime);
-		camera.AddYawPitch(yawInput * 1.8f * deltaTime, pitchInput * 1.8f * deltaTime);
+		constexpr float MOVE_SPEED = Options::Camera::MOVE_SPEED;
+		camera.MoveLocal(moveForward * MOVE_SPEED * deltaTime, moveRight * MOVE_SPEED * deltaTime, moveUp * MOVE_SPEED * deltaTime);
+		camera.AddYawPitch(yawInput * Options::Camera::TURN_SPEED * deltaTime, pitchInput * Options::Camera::TURN_SPEED * deltaTime);
 
 		const FrameContext frame = swapchain->BeginFrame();
 		if (!frame.backBufferView) {
 			if (window->IsMinimized() || window->GetWidth() == 0 || window->GetHeight() == 0) {
-				SDL_Delay(16);
+				SDL_Delay(Options::Application::MINIMIZED_DELAY_MS);
 				continue;
 			}
 			std::cerr << "Failed to acquire a backbuffer.\n";

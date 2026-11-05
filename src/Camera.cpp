@@ -1,13 +1,10 @@
 #include "Camera.h"
+#include "Options.h"
 
 #include <algorithm>
 #include <cmath>
 
 namespace {
-	constexpr float PI = 3.14159265358979323846f;
-	constexpr float HALF_PI = PI * 0.5f;
-	constexpr float DEG_TO_RAD = PI / 180.0f;
-
 	float Dot(Vec3 a, Vec3 b) {
 		return a.x * b.x + a.y * b.y + a.z * b.z;
 	}
@@ -31,10 +28,10 @@ namespace {
 }
 
 Camera::Camera()
-	: m_Position{ 0.0f, 8.0f, -12.0f }
-	, m_YawRadians(PI * 0.5f)
-	, m_PitchRadians(0.0f)
-	, m_FovYRadians(70.0f * DEG_TO_RAD) {
+	: m_Position{ Options::Camera::START_POSITION[0], Options::Camera::START_POSITION[1], Options::Camera::START_POSITION[2] }
+	, m_YawRadians(Options::Camera::START_YAW_DEGREES * Options::Math::DEGREES_TO_RADIANS)
+	, m_PitchRadians(Options::Camera::START_PITCH_DEGREES * Options::Math::DEGREES_TO_RADIANS)
+	, m_FovYRadians(Options::Camera::FOV_Y_DEGREES * Options::Math::DEGREES_TO_RADIANS) {
 }
 
 void Camera::SetPosition(Vec3 position) {
@@ -61,7 +58,7 @@ void Camera::AddYawPitch(float yawDeltaRadians, float pitchDeltaRadians) {
 	m_YawRadians += yawDeltaRadians;
 	m_PitchRadians += pitchDeltaRadians;
 
-	const float pitchLimit = HALF_PI - 0.01f;
+	const float pitchLimit = Options::Math::HALF_PI - Options::Camera::PITCH_LIMIT_MARGIN_RADIANS;
 	m_PitchRadians = std::clamp(m_PitchRadians, -pitchLimit, pitchLimit);
 }
 

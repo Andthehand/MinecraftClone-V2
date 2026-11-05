@@ -1,7 +1,7 @@
 #include "Octree.h"
 
 Octree::Octree(uint32_t depth) 
-	: m_Depth(depth), SideLength(std::uint32_t{ 1 } << depth), MaxVoxelId(0x00FFFFFFu), MaxGpuNodes(std::size_t{ 1 } << 24) {}
+	: m_Depth(depth), SideLength(std::uint32_t{ 1 } << depth) {}
 
 std::uint32_t Octree::GetVoxel(std::uint32_t x, std::uint32_t y, std::uint32_t z) const {
 	const Node* node = &m_Root;
@@ -63,12 +63,14 @@ bool Octree::EraseNode(Node& node, std::uint32_t x, std::uint32_t y, std::uint32
 
 void Octree::FlattenNode(const Node& source, std::uint32_t destination, std::vector<GpuOctreeNode>& output) {
 	std::uint32_t mask = 0;
-	for (std::uint32_t i = 0; i < 8; ++i)
-		if (source.children[i])
+	for (std::uint32_t i = 0; i < source.children.size(); ++i) {
+		if (source.children[i]) {
 			mask |= 1u << i;
+		}
+	}
 
 	if (mask == 0) {
-		output[destination].packed = source.voxel << 8;
+		output[destination].packed = source.voxel << Options::OctreeFormat::PAYLOAD_SHIFT;
 		return;
 	}
 
@@ -76,13 +78,13 @@ void Octree::FlattenNode(const Node& source, std::uint32_t destination, std::vec
 	const auto firstChild = static_cast<std::uint32_t>(output.size());
 	// Allocate every immediate child BEFORE allocating descendants.
 	output.resize(output.size() + count);
-	output[destination].packed = (firstChild << 8) | mask;
+	output[destination].packed = (firstChild << Options::OctreeFormat::PAYLOAD_SHIFT) | mask;
 
 	std::uint32_t offset = 0;
-	for (std::uint32_t i = 0; i < 8; ++i)
-		if (source.children[i])
+	for (std::uint32_t i = 0; i < source.children.size(); ++i) {
+		if (source.children[i]) {
 			FlattenNode(*source.children[i], firstChild + offset++, output);
+		}
+	}
 	// Never hold vector element references across resize/recursion.
 }
-
-

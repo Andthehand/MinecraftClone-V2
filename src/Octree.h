@@ -1,4 +1,7 @@
+#pragma once
+#include "Options.h"
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <bit>
@@ -21,14 +24,17 @@ If leaf
 struct GpuOctreeNode {
 	std::uint32_t packed;
 
-	[[nodiscard]] constexpr std::uint32_t childMask() const noexcept {
-		return packed & 0xFFu;
+	[[nodiscard]] 
+	constexpr std::uint32_t childMask() const noexcept {
+		return packed & Options::OctreeFormat::CHILD_MASK;
 	}
-	[[nodiscard]] constexpr bool isLeaf() const noexcept {
+	[[nodiscard]] 
+	constexpr bool isLeaf() const noexcept {
 		return childMask() == 0;
 	}
-	[[nodiscard]] constexpr std::uint32_t payload() const noexcept {
-		return packed >> 8;
+	[[nodiscard]] 
+	constexpr std::uint32_t payload() const noexcept {
+		return packed >> Options::OctreeFormat::PAYLOAD_SHIFT;
 	}
 };
 
@@ -60,8 +66,6 @@ private:
 private:
 	const uint32_t m_Depth;
 	const uint32_t SideLength;
-	const uint32_t MaxVoxelId;
-	const uint32_t MaxGpuNodes;
 
 	Node m_Root;
 };
