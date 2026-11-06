@@ -1,5 +1,6 @@
 #include "Renderer.h"
 #include "ChunkMesh.h"
+#include "VoxelTextures.h"
 #include <algorithm>
 #include <cstddef>
 #include <type_traits>
@@ -118,28 +119,39 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
         auto it = m_World.chunks.try_emplace(coord).first;
         auto& chunk = it->second;
         m_World.Generate(chunk.octree, coord);
-        const ChunkMesh mesh = BuildChunkMesh(chunk.octree);
+        loaded++;
+    }
+
+    // Border chunks hold voxel data only. Wait for all face neighbors before
+    // building a mesh, then keep it cached as neighbors stream in and out.
+    for (auto& [coord, chunk] : m_World.chunks) {
+        if (!chunk.meshDirty || !m_World.CanMeshChunk(coord, player)) continue;
+        const ChunkMesh mesh = BuildChunkMesh(chunk.octree, m_World.GetChunkNeighbors(coord));
+        Ref<Buffer> vertices;
+        Ref<Buffer> indices;
         if (!mesh.indices.empty()) {
             if (m_Device.CreateBuffer({
                     .size = mesh.vertices.size() * sizeof(VoxelVertex),
                     .usage = BufferUsage::Storage,
                     .memoryUsage = MemoryUsage::CPUToGPU,
                     .initialData = mesh.vertices.data(), .debugName = "ChunkVertices",
-                }, chunk.vertices) != Result::Success ||
+                }, vertices) != Result::Success ||
                 m_Device.CreateBuffer({
                     .size = mesh.indices.size() * sizeof(uint32_t),
                     .usage = BufferUsage::Index,
                     .memoryUsage = MemoryUsage::CPUToGPU,
                     .initialData = mesh.indices.data(), .debugName = "ChunkIndices",
-                }, chunk.indices) != Result::Success) {
-                m_World.chunks.erase(it);
+                }, indices) != Result::Success) {
                 std::cerr << "Failed to upload chunk mesh.\n";
 
                 return false;
             }
-            chunk.indexCount = static_cast<uint32_t>(mesh.indices.size());
         }
-        loaded++;
+        // Publish only a complete upload, also clearing buffers for empty meshes.
+        chunk.vertices = std::move(vertices);
+        chunk.indices = std::move(indices);
+        chunk.indexCount = static_cast<uint32_t>(mesh.indices.size());
+        chunk.meshDirty = false;
     }
 
     return true;
@@ -148,6 +160,7 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
 bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
     if (!m_SolidPipeline || !m_WireframePipeline || !m_VoxelAtlas || !m_VoxelSampler ||
         !m_Pool || !UpdateChunks(camera.GetPosition())) return false;
+    const ChunkCoord player = World::ChunkCoordinate(camera.GetPosition());
     RenderGraph graph;
     const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
     const auto depth = graph.CreateTexture({
@@ -169,7 +182,7 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
     uses.push_back({graph.ImportTexture(m_VoxelAtlas.Raw(), TextureLayout::ShaderRead, sampled),
         sampled, TextureLayout::ShaderRead, RenderGraphAccess::Read});
     for (auto& [coord, chunk] : m_World.chunks) {
-        if (chunk.indexCount == 0) {
+        if (chunk.indexCount == 0 || chunk.meshDirty || !m_World.CanMeshChunk(coord, player)) {
 			// No geometry to render, skip...
             continue;
         }
@@ -203,9 +216,9 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
             0,
         };
 
-		// Draw all loaded chunks
+		// Draw only ready chunks inside the mesh radius, keeping the data border hidden.
         for (auto& [coord, chunk] : m_World.chunks) {
-            if (chunk.indexCount == 0) continue;
+            if (chunk.indexCount == 0 || chunk.meshDirty || !m_World.CanMeshChunk(coord, player)) continue;
             params.chunkOrigin = glm::vec4(glm::vec3(coord) * float(Options::World::CHUNK_SIZE), 0.0f);
             params.vertexBufferIndex = chunk.vertices->GetDescriptorIndex();
             commands.SetPushConstants(&params, sizeof(params));

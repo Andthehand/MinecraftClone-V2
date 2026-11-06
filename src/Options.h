@@ -9,7 +9,9 @@ namespace World {
 	inline constexpr uint32_t OCTREE_DEPTH = 6; // 64*64*64 volume chunk.
     inline constexpr uint32_t CHUNK_SIZE = 1u << OCTREE_DEPTH;
 
-    inline constexpr int LOAD_RADIUS = 8;
+    inline constexpr int MESH_RADIUS = 8;
+    // Keep a voxel-only border available for meshing the visible volume.
+    inline constexpr int LOAD_RADIUS = MESH_RADIUS + 1;
     inline constexpr int UNLOAD_RADIUS = LOAD_RADIUS + 1;
 
     inline constexpr uint32_t CHUNKS_LOADED_PER_FRAME = 10;
@@ -22,7 +24,7 @@ namespace World {
     inline constexpr int TERRAIN_DIRT_DEPTH = 3; // Dirt blocks below the grass surface.
 
     static_assert(OCTREE_DEPTH < 31);
-    static_assert(LOAD_RADIUS >= 0 && UNLOAD_RADIUS > LOAD_RADIUS);
+    static_assert(MESH_RADIUS >= 0 && LOAD_RADIUS >= MESH_RADIUS + 1 && UNLOAD_RADIUS > LOAD_RADIUS);
     static_assert(CHUNKS_LOADED_PER_FRAME > 0);
     static_assert(TERRAIN_FEATURE_SCALE > 0 && TERRAIN_OCTAVES > 0);
     static_assert(TERRAIN_HEIGHT_AMPLITUDE >= 0 && TERRAIN_DIRT_DEPTH >= 0);

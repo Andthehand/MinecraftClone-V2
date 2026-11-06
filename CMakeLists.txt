@@ -44,7 +44,7 @@ target_compile_features(TerrainGenerator PUBLIC cxx_std_23)
 target_link_libraries(TerrainGenerator PUBLIC glm::glm FastNoise)
 
 add_executable(MinecraftClone src/main.cpp "src/Options.h" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Camera.cpp" "src/Octree.h" "src/World.h" "src/ChunkMesh.h")
-target_sources(MinecraftClone PRIVATE src/VoxelTextures.h)
+target_sources(MinecraftClone PRIVATE src/VoxelTextures.h src/World.cpp src/ChunkMesh.cpp)
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(MinecraftClone PRIVATE RealRHI TerrainGenerator)
