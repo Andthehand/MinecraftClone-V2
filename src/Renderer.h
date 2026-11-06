@@ -23,6 +23,8 @@ private:
 	Swapchain& m_Swapchain;
 	Ref<Pipeline> m_SolidPipeline;
 	Ref<Pipeline> m_WireframePipeline;
+	Ref<Texture> m_VoxelAtlas;
+	Ref<Sampler> m_VoxelSampler;
 	bool m_WireframeEnabled = false;
 	std::unique_ptr<TransientResourcePool> m_Pool;
 

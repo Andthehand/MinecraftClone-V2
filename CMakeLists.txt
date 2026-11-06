@@ -30,6 +30,7 @@ FetchContent_Declare(glm
 FetchContent_MakeAvailable(glm)
 
 add_executable(MinecraftClone src/main.cpp "src/Options.h" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Camera.cpp" "src/Octree.h" "src/Octree.cpp" "src/World.h" "src/ChunkMesh.h")
+target_sources(MinecraftClone PRIVATE src/VoxelTextures.h)
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(MinecraftClone PRIVATE RealRHI glm::glm)

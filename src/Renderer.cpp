@@ -33,15 +33,35 @@ namespace {
     struct Parameters {
         glm::mat4 viewProjection;
         glm::vec4 chunkOrigin;
+        uint32_t textureIndex;
+        uint32_t samplerIndex;
     };
     static_assert(std::is_standard_layout_v<Parameters>);
-    static_assert(sizeof(Parameters) == 80);
+    static_assert(sizeof(Parameters) == 88);
     static_assert(offsetof(Parameters, viewProjection) == 0);
     static_assert(offsetof(Parameters, chunkOrigin) == 64);
+    static_assert(offsetof(Parameters, textureIndex) == 80);
+    static_assert(offsetof(Parameters, samplerIndex) == 84);
 }
 
 Renderer::Renderer(Device& device, Swapchain& swapchain)
     : m_Device(device), m_Swapchain(swapchain) {
+    const auto pixels = VoxelTextures::BuildAtlas();
+    if (device.CreateTexture({
+            .width = VoxelTextures::WIDTH, .height = VoxelTextures::HEIGHT,
+            .format = TextureFormat::RGBA8_UNorm,
+            .usage = TextureUsage::ShaderResource | TextureUsage::TransferDst,
+            .debugName = "VoxelAtlas",
+        }, m_VoxelAtlas) != Result::Success ||
+        m_VoxelAtlas->UploadData(pixels.data(), static_cast<uint32_t>(pixels.size())) != Result::Success ||
+        device.CreateSampler({
+            .minFilter = Filter::Nearest, .magFilter = Filter::Nearest, .mipFilter = Filter::Nearest,
+            .addressU = SamplerAddressMode::ClampToEdge, .addressV = SamplerAddressMode::ClampToEdge,
+            .debugName = "VoxelPixelSampler",
+        }, m_VoxelSampler) != Result::Success) {
+        std::cerr << "Failed to create voxel textures.\n";
+        return;
+    }
     Ref<Shader> shader;
     if (device.CreateShader({.moduleName = Options::Rendering::SHADER_MODULE,
                             .debugName = "VoxelRasterShader"}, shader) != Result::Success) {
@@ -124,7 +144,8 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
 }
 
 bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
-    if (!m_SolidPipeline || !m_WireframePipeline || !m_Pool || !UpdateChunks(camera.GetPosition())) return false;
+    if (!m_SolidPipeline || !m_WireframePipeline || !m_VoxelAtlas || !m_VoxelSampler ||
+        !m_Pool || !UpdateChunks(camera.GetPosition())) return false;
     RenderGraph graph;
     const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
     const auto depth = graph.CreateTexture({
@@ -142,6 +163,9 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
         {backbuffer, backbufferWrite, TextureLayout::ColorAttachment, RenderGraphAccess::Write},
         {depth, depthWrite, TextureLayout::DepthStencilAttachment, RenderGraphAccess::Write},
     };
+    constexpr ResourceState sampled{PipelineStage::FragmentShader, ResourceAccess::ShaderRead};
+    uses.push_back({graph.ImportTexture(m_VoxelAtlas.Raw(), TextureLayout::ShaderRead, sampled),
+        sampled, TextureLayout::ShaderRead, RenderGraphAccess::Read});
     for (auto& [coord, chunk] : m_World.chunks) {
         if (chunk.indexCount == 0) {
 			// No geometry to render, skip...
@@ -173,6 +197,7 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
         projection[1][1] *= -1.0f;
         Parameters params{
             projection * camera.GetViewMatrix(), glm::vec4(0.0f),
+            m_VoxelAtlas->GetSampledImageDescriptorIndex(), m_VoxelSampler->GetDescriptorIndex(),
         };
 
 		// Draw all loaded chunks
