@@ -5,6 +5,7 @@
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/ext/matrix_transform.hpp>
 
 Camera::Camera()
 	: m_Position(Options::Camera::START_POSITION)
@@ -61,4 +62,9 @@ glm::vec3 Camera::GetUp() const {
 
 float Camera::GetFovYRadians() const {
 	return m_FovYRadians;
+}
+
+glm::mat4 Camera::GetViewMatrix() const {
+	// World forward remains +Z initially; visible points have negative view-space Z.
+	return glm::lookAtRH(m_Position, m_Position + GetForward(), GetUp());
 }

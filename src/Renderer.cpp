@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <type_traits>
-#include <glm/trigonometric.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
 #include <glm/vec4.hpp>
 #include <iostream>
 #include <vector>
@@ -31,13 +31,13 @@ namespace {
     }
 
     struct Parameters {
-        glm::vec4 cameraPosition;
-        glm::vec4 cameraForward;
-        glm::vec4 cameraRight;
-        glm::vec4 cameraUp;
+        glm::mat4 viewProjection;
         glm::vec4 chunkOrigin;
-        float tanHalfFovY, aspect, nearPlane, farPlane;
     };
+    static_assert(std::is_standard_layout_v<Parameters>);
+    static_assert(sizeof(Parameters) == 80);
+    static_assert(offsetof(Parameters, viewProjection) == 0);
+    static_assert(offsetof(Parameters, chunkOrigin) == 64);
 }
 
 Renderer::Renderer(Device& device, Swapchain& swapchain)
@@ -167,13 +167,12 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
         commands.BindPipeline(m_WireframeEnabled ? m_WireframePipeline.Raw() : m_SolidPipeline.Raw());
 
         // Push constants
-        const auto position = camera.GetPosition(), forward = camera.GetForward();
-        const auto right = camera.GetRight(), up = camera.GetUp();
+        auto projection = glm::perspectiveRH_ZO(camera.GetFovYRadians(), float(frame.width) / float(frame.height),
+            Options::Rendering::NEAR_PLANE, Options::Rendering::FAR_PLANE);
+        // Vulkan uses [0,1] depth and a positive-height viewport, so flip clip-space Y.
+        projection[1][1] *= -1.0f;
         Parameters params{
-            glm::vec4(position, 0.0f), glm::vec4(forward, 0.0f),
-            glm::vec4(right, 0.0f), glm::vec4(up, 0.0f), glm::vec4(0.0f),
-            glm::tan(camera.GetFovYRadians() * 0.5f), float(frame.width) / float(frame.height),
-            Options::Rendering::NEAR_PLANE, Options::Rendering::FAR_PLANE,
+            projection * camera.GetViewMatrix(), glm::vec4(0.0f),
         };
 
 		// Draw all loaded chunks

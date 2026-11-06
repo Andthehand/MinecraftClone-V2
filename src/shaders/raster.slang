@@ -1,13 +1,6 @@
 struct Parameters {
-    float4 cameraPosition;
-    float4 cameraForward;
-    float4 cameraRight;
-    float4 cameraUp;
+    column_major float4x4 viewProjection;
     float4 chunkOrigin;
-    float tanHalfFovY;
-    float aspect;
-    float nearPlane;
-    float farPlane;
 };
 [[vk::push_constant]] ConstantBuffer<Parameters> parameters;
 struct VertexInput { float3 position; float3 normal; };
@@ -15,17 +8,9 @@ struct VertexOutput { float4 position : SV_Position; float3 normal; };
 
 [shader("vertex")]
 VertexOutput vertexMain(VertexInput input) {
-    float3 relative = input.position + parameters.chunkOrigin.xyz - parameters.cameraPosition.xyz;
-    float depth = dot(relative, parameters.cameraForward.xyz);
-    float nearPlane = parameters.nearPlane;
-    float farPlane = parameters.farPlane;
     VertexOutput output;
-
-    // Vulkan clip depth is [0,w]; negate Y for a positive-height viewport.
-    output.position = float4(
-        dot(relative, parameters.cameraRight.xyz) / (parameters.tanHalfFovY * parameters.aspect),
-        -dot(relative, parameters.cameraUp.xyz) / parameters.tanHalfFovY,
-        farPlane * (depth - nearPlane) / (farPlane - nearPlane), depth);
+    float3 worldPosition = input.position + parameters.chunkOrigin.xyz;
+    output.position = mul(parameters.viewProjection, float4(worldPosition, 1.0f));
     output.normal = input.normal;
 
     return output;

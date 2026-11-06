@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/vec3.hpp>
+#include <glm/mat4x4.hpp>
 
 class Camera {
 public:
@@ -16,6 +17,7 @@ public:
 	[[nodiscard]] glm::vec3 GetRight() const;
 	[[nodiscard]] glm::vec3 GetUp() const;
 	[[nodiscard]] float GetFovYRadians() const;
+	[[nodiscard]] glm::mat4 GetViewMatrix() const;
 
 private:
 	glm::vec3 m_Position;
