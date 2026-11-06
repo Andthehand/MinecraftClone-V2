@@ -3,24 +3,30 @@ struct Parameters {
     float4 chunkOrigin;
     uint textureIndex;
     uint samplerIndex;
+    uint vertexBufferIndex;
 };
 [[vk::push_constant]] ConstantBuffer<Parameters> parameters;
-struct VertexInput { float3 position; float3 normal; float2 uv; uint tile; };
 struct VertexOutput {
     float4 position : SV_Position;
-    float3 normal;
     float2 uv;
     nointerpolation uint tile;
 };
 
+[require(spvDescriptorHeapEXT)]
 [shader("vertex")]
-VertexOutput vertexMain(VertexInput input) {
+VertexOutput vertexMain(uint vertexID : SV_VertexID) {
+    ByteAddressBuffer vertices = ByteAddressBuffer.Handle(uint2(parameters.vertexBufferIndex, 0));
+    // Match VoxelVertex's packed CPU layout; byte loads avoid float3 alignment differences.
+    uint offset = vertexID * 36u;
+    float3 position = asfloat(vertices.Load3(offset));
+    float2 uv = asfloat(vertices.Load2(offset + 24u));
+    uint tile = vertices.Load(offset + 32u);
+    float3 worldPosition = position + parameters.chunkOrigin.xyz;
+
     VertexOutput output;
-    float3 worldPosition = input.position + parameters.chunkOrigin.xyz;
     output.position = mul(parameters.viewProjection, float4(worldPosition, 1.0f));
-    output.normal = input.normal;
-    output.uv = input.uv;
-    output.tile = input.tile;
+    output.uv = uv;
+    output.tile = tile;
 
     return output;
 }
@@ -36,5 +42,6 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float tileSize = float(height);
     float2 pixel = clamp(input.uv * tileSize, 0.5f, tileSize - 0.5f);
     float2 atlasUV = (pixel + float2(float(input.tile) * tileSize, 0.0f)) / float2(width, height);
+    
     return atlas.Sample(pixelSampler, atlasUV);
 }

@@ -35,13 +35,15 @@ namespace {
         glm::vec4 chunkOrigin;
         uint32_t textureIndex;
         uint32_t samplerIndex;
+        uint32_t vertexBufferIndex;
     };
     static_assert(std::is_standard_layout_v<Parameters>);
-    static_assert(sizeof(Parameters) == 88);
+    static_assert(sizeof(Parameters) == 92);
     static_assert(offsetof(Parameters, viewProjection) == 0);
     static_assert(offsetof(Parameters, chunkOrigin) == 64);
     static_assert(offsetof(Parameters, textureIndex) == 80);
     static_assert(offsetof(Parameters, samplerIndex) == 84);
+    static_assert(offsetof(Parameters, vertexBufferIndex) == 88);
 }
 
 Renderer::Renderer(Device& device, Swapchain& swapchain)
@@ -93,7 +95,7 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
     const ChunkCoord player = World::ChunkCoordinate(position);
     for (auto it = m_World.chunks.begin(); it != m_World.chunks.end();) {
         if (World::Distance(it->first, player) > Options::World::UNLOAD_RADIUS) {
-            // Recorded bindings retain the buffers until GPU completion.
+            // Render graph resource uses retain the buffers until GPU completion.
             it = m_World.chunks.erase(it);
         }
         else {
@@ -120,7 +122,7 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
         if (!mesh.indices.empty()) {
             if (m_Device.CreateBuffer({
                     .size = mesh.vertices.size() * sizeof(VoxelVertex),
-                    .usage = BufferUsage::Vertex,
+                    .usage = BufferUsage::Storage,
                     .memoryUsage = MemoryUsage::CPUToGPU,
                     .initialData = mesh.vertices.data(), .debugName = "ChunkVertices",
                 }, chunk.vertices) != Result::Success ||
@@ -173,7 +175,7 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
         }
 
         uses.push_back({graph.ImportBuffer(chunk.vertices.Raw()),
-            {PipelineStage::VertexInput, ResourceAccess::VertexAttributeRead}, TextureLayout::Undefined, RenderGraphAccess::Read});
+            {PipelineStage::VertexShader, ResourceAccess::ShaderRead}, TextureLayout::Undefined, RenderGraphAccess::Read});
         uses.push_back({graph.ImportBuffer(chunk.indices.Raw()),
             {PipelineStage::VertexInput, ResourceAccess::IndexRead}, TextureLayout::Undefined, RenderGraphAccess::Read});
     }
@@ -198,14 +200,20 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
         Parameters params{
             projection * camera.GetViewMatrix(), glm::vec4(0.0f),
             m_VoxelAtlas->GetSampledImageDescriptorIndex(), m_VoxelSampler->GetDescriptorIndex(),
+            0,
         };
 
 		// Draw all loaded chunks
         for (auto& [coord, chunk] : m_World.chunks) {
             if (chunk.indexCount == 0) continue;
             params.chunkOrigin = glm::vec4(glm::vec3(coord) * float(Options::World::CHUNK_SIZE), 0.0f);
+            params.vertexBufferIndex = chunk.vertices->GetDescriptorIndex();
             commands.SetPushConstants(&params, sizeof(params));
-            commands.BindVertexBuffer(chunk.vertices.Raw());
+            // Descriptor indices alone do not declare shader access or retain resources.
+            commands.ClearResourceDeclarations();
+            commands.UseResource(chunk.vertices.Raw());
+            commands.UseResource(m_VoxelAtlas.Raw());
+            commands.UseResource(m_VoxelSampler.Raw());
             commands.BindIndexBuffer(chunk.indices.Raw());
             commands.DrawIndexed(chunk.indexCount);
         }
