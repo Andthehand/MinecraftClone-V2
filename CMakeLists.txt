@@ -19,7 +19,7 @@ endif()
 
 add_subdirectory(external/RealRHI)
 
-add_executable(MinecraftClone src/main.cpp "src/Options.h" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Camera.cpp" "src/Octree.h" "src/Octree.cpp" "src/World.h" "src/FreeListAllocator.h" "src/FreeListAllocator.cpp")
+add_executable(MinecraftClone src/main.cpp "src/Options.h" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Camera.cpp" "src/Octree.h" "src/Octree.cpp" "src/World.h" "src/ChunkMesh.h")
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(MinecraftClone PRIVATE RealRHI)

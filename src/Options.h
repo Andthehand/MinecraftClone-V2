@@ -11,13 +11,8 @@ namespace World {
 
     inline constexpr int LOAD_RADIUS = 3;
     inline constexpr int UNLOAD_RADIUS = LOAD_RADIUS + 1;
-    inline constexpr uint32_t GRID_SIZE = 2 * UNLOAD_RADIUS + 1;
-    inline constexpr uint32_t GRID_CELLS = GRID_SIZE * GRID_SIZE * GRID_SIZE;
 
-    // Capacity in nodes, not bytes: 42 million (binary) four-byte nodes = 168 MiB.
-    inline constexpr uint32_t NODE_POOL_CAPACITY = 42u * 1024u * 1024u;
     inline constexpr uint32_t CHUNKS_LOADED_PER_FRAME = 4;
-    inline constexpr uint32_t MISSING_CHUNK = UINT32_MAX;
 
 	// TODO: Remove when debug sphere is no longer used.
     inline constexpr float SPHERE_RADIUS_RATIO = 0.45f;
@@ -25,15 +20,15 @@ namespace World {
 
     static_assert(OCTREE_DEPTH < 31);
     static_assert(LOAD_RADIUS >= 0 && UNLOAD_RADIUS > LOAD_RADIUS);
-    static_assert(CHUNKS_LOADED_PER_FRAME > 0 && NODE_POOL_CAPACITY > 0);
+    static_assert(CHUNKS_LOADED_PER_FRAME > 0);
 }
 namespace Rendering {
     inline constexpr uint64_t TRANSIENT_POOL_BYTES = 64ull * 1024 * 1024;
-    inline constexpr uint64_t MIN_NODE_ALLOCATION_ALIGNMENT_BYTES = 256;
-    inline constexpr const char* SHADER_MODULE = "raytrace.slang";
+    inline constexpr const char* SHADER_MODULE = "raster.slang";
+    inline constexpr float NEAR_PLANE = 0.1f;
+    inline constexpr float FAR_PLANE = (World::UNLOAD_RADIUS + 2) * World::CHUNK_SIZE * 2.0f;
 
-    static_assert(MIN_NODE_ALLOCATION_ALIGNMENT_BYTES > 0 &&
-        (MIN_NODE_ALLOCATION_ALIGNMENT_BYTES & (MIN_NODE_ALLOCATION_ALIGNMENT_BYTES - 1)) == 0);
+    static_assert(NEAR_PLANE > 0 && FAR_PLANE > NEAR_PLANE);
 }
 namespace Camera {
     inline constexpr float START_POSITION[3] = {0.0f, 8.0f, -12.0f};
@@ -58,15 +53,5 @@ namespace Math {
     inline constexpr float PI = std::numbers::pi_v<float>;
     inline constexpr float HALF_PI = PI * 0.5f;
     inline constexpr float DEGREES_TO_RADIANS = PI / 180.0f;
-}
-// This encoding must match shaders/Options.slang.
-namespace OctreeFormat {
-    inline constexpr uint32_t CHILD_MASK = 0xFFu;
-    inline constexpr uint32_t PAYLOAD_SHIFT = 8u;
-}
-namespace Hashing {
-    inline constexpr uint32_t COMBINE_SEED = 0x9e3779b9u;
-    inline constexpr uint32_t LEFT_SHIFT = 6;
-    inline constexpr uint32_t RIGHT_SHIFT = 2;
 }
 }

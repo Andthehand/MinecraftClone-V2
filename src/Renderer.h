@@ -14,28 +14,17 @@ public:
 	~Renderer() = default;
 
 	bool DrawFrame(const FrameContext& frameContext, const Camera& camera);
+	void ToggleWireframe() { m_WireframeEnabled = !m_WireframeEnabled; }
 	size_t GetLoadedChunkCount() const { return m_World.chunks.size(); }
-	bool IsChunkLoaded(ChunkCoord coord) const { return m_World.chunks.contains(coord); }
 
 private:
 	bool UpdateChunks(Vec3 position);
 	Device& m_Device;
 	Swapchain& m_Swapchain;
-	Ref<Pipeline> m_ComputeRaytracePipeline;
-	std::array<uint32_t, 3> m_RaytraceWorkgroupSize{1, 1, 1};
-	Ref<Buffer> m_ChunkBuffer;
-	Ref<Buffer> m_ChunkTable;
+	Ref<Pipeline> m_SolidPipeline;
+	Ref<Pipeline> m_WireframePipeline;
+	bool m_WireframeEnabled = false;
 	std::unique_ptr<TransientResourcePool> m_Pool;
 
 	World m_World;
-	ChunkCoord m_GridOrigin{};
-	FreeListAllocator m_NodeAllocator;
-
-	// Used for deferred freeing of GPU allocations
-	struct RetiredAllocation {
-		FreeListAllocator::Allocation allocation;
-		RenderGraphSubmission lastUse;
-	};
-	std::vector<RetiredAllocation> m_RetiredAllocations;	
-	RenderGraphSubmission m_LastSubmission;
 };

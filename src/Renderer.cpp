@@ -1,252 +1,197 @@
 #include "Renderer.h"
-
-#include <RenderGraph/RenderGraph.h>
-
+#include "ChunkMesh.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <vector>
-#include <print>
 
 namespace {
-	const std::vector<ChunkCoord>& GetChunkLoadOffsets() {
-		static const std::vector<ChunkCoord> OFFSETS = [] {
-			constexpr int LOAD_RADIUS = Options::World::LOAD_RADIUS;
-			constexpr int LOAD_DIAMETER = 2 * LOAD_RADIUS + 1;
-			std::vector<ChunkCoord> offsets;
-			offsets.reserve(size_t{LOAD_DIAMETER} * LOAD_DIAMETER * LOAD_DIAMETER);
-			for (int z = -LOAD_RADIUS; z <= LOAD_RADIUS; ++z) {
-				for (int y = -LOAD_RADIUS; y <= LOAD_RADIUS; ++y) {
-					for (int x = -LOAD_RADIUS; x <= LOAD_RADIUS; ++x) {
-						offsets.push_back({x, y, z});
-					}
-				}
-			}
-			// Preserve z/y/x ordering within each distance shell.
-			std::stable_sort(offsets.begin(), offsets.end(), [](ChunkCoord a, ChunkCoord b) {
-				return World::Distance(a, {0, 0, 0}) < World::Distance(b, {0, 0, 0});
-			});
-			return offsets;
-		}();
-		return OFFSETS;
-	}
+	// Returns a list of chunk offsets to load, sorted by distance from the origin.
+    const std::vector<ChunkCoord>& GetChunkLoadOffsets() {
+        static const std::vector<ChunkCoord> offsets = [] {
+            std::vector<ChunkCoord> result;
+            constexpr int radius = Options::World::LOAD_RADIUS;
+            for (int z = -radius; z <= radius; ++z) {
+                for (int y = -radius; y <= radius; ++y) {
+                    for (int x = -radius; x <= radius; ++x) {
+                        result.push_back({ x, y, z });
+                    }
+                }
+            }
+                        
+            std::stable_sort(result.begin(), result.end(), [](ChunkCoord a, ChunkCoord b) {
+                return World::Distance(a, {0, 0, 0}) < World::Distance(b, {0, 0, 0});
+            });
+            return result;
+        }();
+        return offsets;
+    }
+
+    struct Parameters {
+        float cameraPosition[4];
+        float cameraForward[4];
+        float cameraRight[4];
+        float cameraUp[4];
+        float chunkOrigin[4];
+        float tanHalfFovY, aspect, nearPlane, farPlane;
+    };
+    static_assert(sizeof(Parameters) == 96);
 }
 
 Renderer::Renderer(Device& device, Swapchain& swapchain)
-	: m_Device(device), m_Swapchain(swapchain),
-	  m_NodeAllocator(Options::World::NODE_POOL_CAPACITY, static_cast<uint32_t>(
-		std::max<uint64_t>(Options::Rendering::MIN_NODE_ALLOCATION_ALIGNMENT_BYTES, device.GetCapabilities().limits.nonCoherentAtomSize) / sizeof(GpuOctreeNode))) {
-	
-	RealRHI::Ref<RealRHI::Shader> shader;
-	if (m_Device.CreateShader(ShaderDesc{
-			.moduleName = Options::Rendering::SHADER_MODULE,
-			.debugName = "RaytraceComputeShader",
-		}, shader) != Result::Success) {
-		std::cerr << "Failed to create raytrace shader.\n";
-		return;
-	}
-	for (const auto& entry : shader->GetReflection().entryPoints) {
-		if (entry.stage == ShaderStage::Compute) {
-			m_RaytraceWorkgroupSize = entry.computeGroupSize;
-			break;
-		}
-	}
-	if (m_RaytraceWorkgroupSize[0] == 0 || m_RaytraceWorkgroupSize[1] == 0 || m_RaytraceWorkgroupSize[2] != 1) {
-		std::cerr << "Raytrace shader requires a two-dimensional compute workgroup.\n";
-		return;
-	}
+    : m_Device(device), m_Swapchain(swapchain) {
+    Ref<Shader> shader;
+    if (device.CreateShader({.moduleName = Options::Rendering::SHADER_MODULE,
+                            .debugName = "VoxelRasterShader"}, shader) != Result::Success) {
+        std::cerr << "Failed to create voxel raster shader.\n";
+        return;
+    }
 
-	if (m_Device.CreateComputePipeline(ComputePipelineDesc{
-			.shader = shader.Raw(),
-			.debugName = "RaytraceComputePipeline",
-		}, m_ComputeRaytracePipeline) != Result::Success) {
-		std::cerr << "Failed to create raytrace pipeline.\n";
-		return;
-	}
-	m_Pool = std::make_unique<TransientResourcePool>(m_Device, Options::Rendering::TRANSIENT_POOL_BYTES);
-
-	if (m_Device.CreateBuffer(BufferDesc{
-		.size = uint64_t{ Options::World::NODE_POOL_CAPACITY} * sizeof(GpuOctreeNode),
-		.usage = BufferUsage::Storage,
-		.memoryUsage = MemoryUsage::CPUToGPU,
-		.debugName = "ChunkNodePool",
-	}, m_ChunkBuffer) != Result::Success) {
-		std::cerr << "Failed to create chunk node pool.\n";
-		return;
-	}
+    PipelineDesc pipelineDesc{
+        .shader = shader.Raw(),
+        .rasterState = {.cullMode = CullMode::None, .fillMode = FillMode::Solid},
+        .depthState = {.depthTestEnable = true, .depthWriteEnable = true, .compareOp = CompareOp::Less},
+        .renderTargetFormats = {.colorFormats = {swapchain.GetBackBufferFormat()}, .depthFormat = TextureFormat::D32_Float},
+        .debugName = "VoxelSolidPipeline",
+    };
+    if (device.CreateGraphicsPipeline(pipelineDesc, m_SolidPipeline) != Result::Success) {
+        std::cerr << "Failed to create solid voxel pipeline.\n";
+        return;
+    }
+    pipelineDesc.rasterState.fillMode = FillMode::Wireframe;
+    pipelineDesc.debugName = "VoxelWireframePipeline";
+    if (device.CreateGraphicsPipeline(pipelineDesc, m_WireframePipeline) != Result::Success) {
+        std::cerr << "Failed to create wireframe voxel pipeline.\n";
+        return;
+    }
+    m_Pool = std::make_unique<TransientResourcePool>(device, Options::Rendering::TRANSIENT_POOL_BYTES);
 }
 
 bool Renderer::UpdateChunks(Vec3 position) {
-	const ChunkCoord playerPos = World::ChunkCoordinate(position.x, position.y, position.z);
-	const ChunkCoord origin{playerPos.x - Options::World::UNLOAD_RADIUS,
-							playerPos.y - Options::World::UNLOAD_RADIUS,
-							playerPos.z - Options::World::UNLOAD_RADIUS};
-	bool changed = !m_ChunkTable || !(origin == m_GridOrigin);
-	m_GridOrigin = origin;
+    const ChunkCoord player = World::ChunkCoordinate(position.x, position.y, position.z);
+    for (auto it = m_World.chunks.begin(); it != m_World.chunks.end();) {
+        if (World::Distance(it->first, player) > Options::World::UNLOAD_RADIUS) {
+            // Recorded bindings retain the buffers until GPU completion.
+            it = m_World.chunks.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
 
-	// Defer chunk freeing until after the GPU has finished reading them, to avoid a GPU wait.
-	for (auto it = m_World.chunks.begin(); it != m_World.chunks.end();) {
-		if (World::Distance(it->first, playerPos) > Options::World::UNLOAD_RADIUS) {
-			m_RetiredAllocations.push_back({it->second.allocation, m_LastSubmission});
-			it = m_World.chunks.erase(it);
-			changed = true;
-		} else {
-			++it;
-		}
-	}
+    uint32_t loaded = 0;
+    for (const auto offset : GetChunkLoadOffsets()) {
+        if (loaded == Options::World::CHUNKS_LOADED_PER_FRAME) {
+            break;
+        }
 
-	// Free retired allocations that are no longer in use by the GPU.
-	for (auto it = m_RetiredAllocations.begin(); it != m_RetiredAllocations.end();) {
-		if (it->lastUse.IsComplete(m_Device)) {
-			if (!m_NodeAllocator.Free(it->allocation)) {
-				std::cerr << "Invalid retired chunk allocation.\n";
-				return false;
-			}
-			it = m_RetiredAllocations.erase(it);
-		} else {
-			++it;
-		}
-	}
+        const ChunkCoord coord{player.x + offset.x, player.y + offset.y, player.z + offset.z};
+        if (m_World.chunks.contains(coord)) {
+			// Already loaded, skip...
+            continue;
+        }
 
-	// Visit cached offsets in nearest-first order; only successful loads use the budget.
-	uint32_t loaded = 0;
-	for (const ChunkCoord offset : GetChunkLoadOffsets()) {
-		if (loaded == Options::World::CHUNKS_LOADED_PER_FRAME) {
-			break;
-		}
+        auto it = m_World.chunks.try_emplace(coord).first;
+        auto& chunk = it->second;
+        World::Generate(chunk.octree);
+        const ChunkMesh mesh = BuildChunkMesh(chunk.octree);
+        if (!mesh.indices.empty()) {
+            if (m_Device.CreateBuffer({
+                    .size = mesh.vertices.size() * sizeof(VoxelVertex),
+                    .usage = BufferUsage::Vertex,
+                    .memoryUsage = MemoryUsage::CPUToGPU,
+                    .initialData = mesh.vertices.data(), .debugName = "ChunkVertices",
+                }, chunk.vertices) != Result::Success ||
+                m_Device.CreateBuffer({
+                    .size = mesh.indices.size() * sizeof(uint32_t),
+                    .usage = BufferUsage::Index,
+                    .memoryUsage = MemoryUsage::CPUToGPU,
+                    .initialData = mesh.indices.data(), .debugName = "ChunkIndices",
+                }, chunk.indices) != Result::Success) {
+                m_World.chunks.erase(it);
+                std::cerr << "Failed to upload chunk mesh.\n";
+                
+                return false;
+            }
+            chunk.indexCount = static_cast<uint32_t>(mesh.indices.size());
+        }
+        loaded++;
+    }
 
-		const ChunkCoord coord{playerPos.x + offset.x, playerPos.y + offset.y, playerPos.z + offset.z};
-		if (m_World.chunks.contains(coord)) {
-			continue;
-		}
-
-		const auto it = m_World.chunks.try_emplace(coord).first;
-		auto& chunk = it->second;
-		World::Generate(chunk.octree);
-		const auto nodes = chunk.octree.ToGpuNodes();
-		const auto allocation = m_NodeAllocator.Allocate(static_cast<uint32_t>(nodes.size()));
-		if (!allocation) {
-			m_World.chunks.erase(it);
-			break; // Retry next frame after retired ranges become available.
-		}
-
-		if (m_ChunkBuffer->WriteData(nodes.data(), nodes.size() * sizeof(GpuOctreeNode),
-			uint64_t{allocation->offset} * sizeof(GpuOctreeNode)) != Result::Success) {
-			m_NodeAllocator.Free(*allocation);
-			m_World.chunks.erase(it);
-			std::cerr << "Failed to upload chunk.\n";
-			return false;
-		}
-
-		chunk.allocation = *allocation;
-		++loaded;
-		changed = true;
-	}
-
-	if (!changed) {
-		return true;
-	}
-	std::vector<uint32_t> table(Options::World::GRID_CELLS, Options::World::MISSING_CHUNK);
-	for (const auto& [coord, chunk] : m_World.chunks) {
-		table[World::VoxelIndex(coord.x - origin.x, coord.y - origin.y, coord.z - origin.z)] =
-			chunk.allocation.offset;
-	}
-	// Publish an immutable snapshot. RHI command lists retain older buffers until
-	// their GPU submissions complete, so no in-flight lookup table is overwritten.
-	Ref<Buffer> nextTable;
-	if (m_Device.CreateBuffer(BufferDesc{
-			.size = table.size() * sizeof(uint32_t),
-			.usage = BufferUsage::Storage,
-			.memoryUsage = MemoryUsage::CPUToGPU,
-			.initialData = table.data(),
-			.debugName = "ChunkLookupTable",
-		}, nextTable) != Result::Success) {
-		std::cerr << "Failed to create chunk lookup table.\n";
-		return false;
-	}
-	std::println("Chunk lookup table updated: {} chunks loaded, {} retired allocations.", m_World.chunks.size(), m_RetiredAllocations.size());
-	m_ChunkTable = nextTable;
-	return true;
+    return true;
 }
 
-struct Parameters {
-	uint32_t width;
-	uint32_t height;
-	uint32_t chunkSize;
-	uint32_t chunkTableIndex;
+bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
+    if (!m_SolidPipeline || !m_WireframePipeline || !m_Pool || !UpdateChunks(camera.GetPosition())) return false;
+    RenderGraph graph;
+    const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
+    const auto depth = graph.CreateTexture({
+        .width = frame.width, .height = frame.height,
+        .format = TextureFormat::D32_Float, .usage = TextureUsage::DepthStencil,
+        .debugName = "VoxelDepth",
+    });
 
-	float cameraPosition[4];
-	float cameraForward[4];
-	float cameraRight[4];
-	float cameraUp[4];
+	constexpr ResourceState backbufferWrite{ PipelineStage::ColorAttachmentOutput, ResourceAccess::ColorAttachmentWrite };
+	constexpr ResourceState depthWrite{ 
+        PipelineStage::EarlyFragmentTests | PipelineStage::LateFragmentTests,
+		ResourceAccess::DepthStencilRead | ResourceAccess::DepthStencilWrite 
+    };
+    std::vector<RenderGraphUse> uses{
+        {backbuffer, backbufferWrite, TextureLayout::ColorAttachment, RenderGraphAccess::Write},
+        {depth, depthWrite, TextureLayout::DepthStencilAttachment, RenderGraphAccess::Write},
+    };
+    for (auto& [coord, chunk] : m_World.chunks) {
+        if (chunk.indexCount == 0) {
+			// No geometry to render, skip...
+            continue;
+        }
 
-	float tanHalfFovY;
-	float aspect;
-	uint32_t chunkBufferIndex;
-	uint32_t backBufferIndex;
-	int32_t gridOrigin[4];
-	uint32_t gridSize[4];
-};
-static_assert(sizeof(Parameters) == 128);
+        uses.push_back({graph.ImportBuffer(chunk.vertices.Raw()),
+            {PipelineStage::VertexInput, ResourceAccess::VertexAttributeRead}, TextureLayout::Undefined, RenderGraphAccess::Read});
+        uses.push_back({graph.ImportBuffer(chunk.indices.Raw()),
+            {PipelineStage::VertexInput, ResourceAccess::IndexRead}, TextureLayout::Undefined, RenderGraphAccess::Read});
+    }
+    graph.AddPass({.name = "RasterizeVoxels", .resources = std::move(uses)}, [&](CommandList& commands) {
+        commands.BeginRendering({
+            .colorAttachments = {{.target = frame.backBufferView, .clearColor = {0.45f, 0.65f, 0.9f, 1.0f}}},
+            .hasDepth = true,
+            .depthAttachment = {.target = graph.GetTexture(depth)->GetTextureView()},
+            .renderArea = {.width = frame.width, .height = frame.height},
+        });
 
-bool Renderer::DrawFrame(const FrameContext& frameContext, const Camera& camera) {
-	RenderGraph graph;
+        // Set dynamic states
+        commands.SetViewport({.width = float(frame.width), .height = float(frame.height)});
+        commands.SetScissor({.width = frame.width, .height = frame.height});
+        commands.BindPipeline(m_WireframeEnabled ? m_WireframePipeline.Raw() : m_SolidPipeline.Raw());
+        
+        // Push constants
+        const auto position = camera.GetPosition(), forward = camera.GetForward();
+        const auto right = camera.GetRight(), up = camera.GetUp();
+        Parameters params{
+            {position.x, position.y, position.z, 0}, {forward.x, forward.y, forward.z, 0},
+            {right.x, right.y, right.z, 0}, {up.x, up.y, up.z, 0}, {},
+            std::tan(camera.GetFovYRadians() * 0.5f), float(frame.width) / float(frame.height),
+            Options::Rendering::NEAR_PLANE, Options::Rendering::FAR_PLANE,
+        };
+        
+		// Draw all loaded chunks
+        for (auto& [coord, chunk] : m_World.chunks) {
+            if (chunk.indexCount == 0) continue;
+            params.chunkOrigin[0] = float(coord.x) * Options::World::CHUNK_SIZE;
+            params.chunkOrigin[1] = float(coord.y) * Options::World::CHUNK_SIZE;
+            params.chunkOrigin[2] = float(coord.z) * Options::World::CHUNK_SIZE;
+            commands.SetPushConstants(&params, sizeof(params));
+            commands.BindVertexBuffer(chunk.vertices.Raw());
+            commands.BindIndexBuffer(chunk.indices.Raw());
+            commands.DrawIndexed(chunk.indexCount);
+        }
 
-	RenderGraphResource chunkBufferResource = graph.ImportBuffer(m_ChunkBuffer.Raw());
-	RenderGraphResource tableResource = graph.ImportBuffer(m_ChunkTable.Raw());
-	RenderGraphResource backBufferResource = graph.ImportBackBuffer(m_Swapchain, frameContext);
-
-	constexpr ResourceState COMPUTE_READ{ PipelineStage::ComputeShader, ResourceAccess::ShaderRead };
-	constexpr ResourceState COMPUTE_WRITE{ PipelineStage::ComputeShader, ResourceAccess::ShaderWrite };
-
-	graph.AddPass(RenderGraphPassDesc{
-		.name = "RaytracePass",
-		.resources = {
-			RenderGraphUse{ chunkBufferResource, COMPUTE_READ, TextureLayout::Undefined, RenderGraphAccess::Read },
-			RenderGraphUse{ tableResource, COMPUTE_READ, TextureLayout::Undefined, RenderGraphAccess::Read },
-			RenderGraphUse{ backBufferResource, COMPUTE_WRITE, TextureLayout::General, RenderGraphAccess::Write },
-		},
-	}, [&](CommandList& commands) {
-		commands.UseResource(m_ChunkBuffer.Raw());
-		commands.UseResource(m_ChunkTable.Raw());
-		const Vec3 position = camera.GetPosition();
-		const Vec3 forward = camera.GetForward();
-		const Vec3 right = camera.GetRight();
-		const Vec3 up = camera.GetUp();
-
-		const float aspect = frameContext.height == 0 ? 1.0f : static_cast<float>(frameContext.width) / static_cast<float>(frameContext.height);
-		const float tanHalfFovY = std::tan(camera.GetFovYRadians() * 0.5f);
-
-		Parameters params{
-			.width = frameContext.width,
-			.height = frameContext.height,
-			.chunkSize = Options::World::CHUNK_SIZE,
-			.chunkTableIndex = m_ChunkTable->GetDescriptorIndex(),
-			.cameraPosition = { position.x, position.y, position.z, 0.0f },
-			.cameraForward = { forward.x, forward.y, forward.z, 0.0f },
-			.cameraRight = { right.x, right.y, right.z, 0.0f },
-			.cameraUp = { up.x, up.y, up.z, 0.0f },
-			.tanHalfFovY = tanHalfFovY,
-			.aspect = aspect,
-			.chunkBufferIndex = m_ChunkBuffer->GetDescriptorIndex(),
-			.backBufferIndex = graph.GetTexture(backBufferResource)->GetStorageImageDescriptorIndex(),
-			.gridOrigin = {m_GridOrigin.x, m_GridOrigin.y, m_GridOrigin.z, 0},
-			.gridSize = {Options::World::GRID_SIZE, Options::World::GRID_SIZE, Options::World::GRID_SIZE, 0},
-		};
-
-		commands.BindPipeline(m_ComputeRaytracePipeline.Raw());
-		commands.SetPushConstants(&params, sizeof(params));
-		// Read the dimensions from the compiled shader so shader options can change independently.
-		commands.DispatchCompute((frameContext.width + m_RaytraceWorkgroupSize[0] - 1) / m_RaytraceWorkgroupSize[0],
-			(frameContext.height + m_RaytraceWorkgroupSize[1] - 1) / m_RaytraceWorkgroupSize[1], 1);
-	});
-
-	RenderGraphSubmission submission;
-	if (graph.Submit(m_Device, submission, m_Pool.get()) != Result::Success) {
-		std::cerr << "Render graph submission failed.\n";
-		return false;
-	}
-
-	m_LastSubmission = std::move(submission);
-	return true;
+        commands.EndRendering();
+    });
+    RenderGraphSubmission submission;
+    if (graph.Submit(m_Device, submission, m_Pool.get()) != Result::Success) {
+        std::cerr << "Raster render graph submission failed.\n";
+        return false;
+    }
+    return true;
 }

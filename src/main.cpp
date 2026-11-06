@@ -4,6 +4,8 @@ using namespace RealRHI;
 #include <SDL3/SDL.h>
 
 #include <chrono>
+#include <charconv>
+#include <string_view>
 #include <iostream>
 #include <print> // required for std::println
 
@@ -70,7 +72,7 @@ int main() {
 	}
 
 	Ref<Swapchain> swapchain;
-	if (device->CreateSwapchain(SwapchainDesc{ .window = window.Raw(), .enableStorage = true }, swapchain) != Result::Success) {
+	if (device->CreateSwapchain(SwapchainDesc{ .window = window.Raw() }, swapchain) != Result::Success) {
 		std::cerr << "Failed to create swapchain.\n";
 		return 1;
 	}
@@ -85,6 +87,9 @@ int main() {
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_EVENT_QUIT) {
 				running = false;
+			}
+			if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_F3 && !event.key.repeat) {
+				renderer.ToggleWireframe();
 			}
 		}
 		if (!running) {
