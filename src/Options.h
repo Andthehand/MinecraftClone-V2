@@ -6,13 +6,13 @@
 // Compile-time settings: edit here and rebuild. Derived values update automatically.
 namespace Options {
 namespace World {
-	inline constexpr uint32_t OCTREE_DEPTH = 5; // 32*32*32 volume chunk.
+	inline constexpr uint32_t OCTREE_DEPTH = 6; // 64*64*64 volume chunk.
     inline constexpr uint32_t CHUNK_SIZE = 1u << OCTREE_DEPTH;
 
     inline constexpr int LOAD_RADIUS = 8;
     inline constexpr int UNLOAD_RADIUS = LOAD_RADIUS + 1;
 
-    inline constexpr uint32_t CHUNKS_LOADED_PER_FRAME = 4;
+    inline constexpr uint32_t CHUNKS_LOADED_PER_FRAME = 10;
 
     inline constexpr int TERRAIN_SEED = 1337;
     inline constexpr float TERRAIN_FEATURE_SCALE = 128.0f; // Width of broad hills in voxels.

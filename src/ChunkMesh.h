@@ -64,7 +64,15 @@ inline ChunkMesh BuildChunkMesh(const Octree& octree) {
         return mesh;
     }
 
-    std::vector<uint32_t> mask(static_cast<size_t>(size) * size);
+    // Traverse the tree once and reuse contiguous voxel reads for all six face
+    // passes, instead of starting at the root for every cell and neighbor.
+    const size_t side = static_cast<size_t>(size);
+    std::vector<uint32_t> voxels(side * side * side);
+    octree.CopyVoxels(voxels);
+    const auto voxelAt = [&voxels, side](glm::ivec3 cell) {
+        return voxels[(static_cast<size_t>(cell.z) * side + cell.y) * side + cell.x];
+    };
+    std::vector<uint32_t> mask(side * side);
     for (int axis = 0; axis < 3; ++axis) {
         const int u = (axis + 1) % 3, v = (axis + 2) % 3;
         for (int sign : {-1, 1}) {
@@ -73,13 +81,17 @@ inline ChunkMesh BuildChunkMesh(const Octree& octree) {
                     for (int i = 0; i < size; ++i) {
                         glm::ivec3 cell(0);
                         cell[axis] = slice; cell[u] = i; cell[v] = j;
-                        const auto material = octree.GetVoxel(cell.x, cell.y, cell.z);
+                        const auto material = voxelAt(cell);
+                        if (material == VoxelTextures::Air) {
+                            mask[static_cast<size_t>(j) * size + i] = 0;
+                            continue;
+                        }
                         auto neighbor = cell;
                         neighbor[axis] += sign;
                         const bool exposed = neighbor[axis] < 0 || neighbor[axis] >= size ||
-                            octree.GetVoxel(neighbor.x, neighbor.y, neighbor.z) == VoxelTextures::Air;
+                            voxelAt(neighbor) == VoxelTextures::Air;
                         mask[static_cast<size_t>(j) * size + i] =
-                            material != VoxelTextures::Air && exposed
+                            exposed
                             ? VoxelTextures::FaceTile(material, axis, sign) + 1 : 0;
                     }
                 }

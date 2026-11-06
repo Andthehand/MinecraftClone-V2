@@ -1,14 +1,32 @@
 #include "Octree.h"
+#include <algorithm>
+#include <stdexcept>
 
 Octree::Octree(uint32_t depth) 
 	: m_Depth(depth), SideLength(std::uint32_t{ 1 } << depth) {}
 
-std::uint32_t Octree::GetVoxel(std::uint32_t x, std::uint32_t y, std::uint32_t z) const {
-	const Node* node = &m_Root;
-	for (std::size_t remaining = m_Depth; remaining > 0 && node->children; --remaining)
-		node = &(*node->children)[ChildIndex(x, y, z, remaining - 1)];
+void Octree::CopyVoxels(std::span<std::uint32_t> destination) const {
+	// Divide to validate even volumes whose voxel count would overflow size_t.
+	if (destination.size() / SideLength / SideLength < SideLength)
+		throw std::invalid_argument("CopyVoxels destination is too small");
+	CopyNode(m_Root, destination.data(), SideLength, SideLength);
+}
 
-	return node->voxel;
+void Octree::CopyNode(const Node& node, std::uint32_t* destination,
+	std::size_t stride, std::uint32_t size) {
+	if (!node.children) {
+		for (std::uint32_t z = 0; z < size; ++z)
+			for (std::uint32_t y = 0; y < size; ++y)
+				std::fill_n(destination + (z * stride + y) * stride, size, node.voxel);
+		return;
+	}
+	const auto half = size / 2;
+	for (std::uint32_t child = 0; child < 8; ++child) {
+		const auto offset = (child & 1u) * half
+			+ ((child >> 1) & 1u) * half * stride
+			+ ((child >> 2) & 1u) * half * stride * stride;
+		CopyNode((*node.children)[child], destination + offset, stride, half);
+	}
 }
 
 void Octree::SetVoxel(std::uint32_t x, std::uint32_t y, std::uint32_t z, std::uint32_t voxel) {
