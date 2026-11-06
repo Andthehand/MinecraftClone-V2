@@ -1,14 +1,18 @@
 #pragma once
 #include "Octree.h"
 #include <vector>
+#include <cstddef>
+#include <type_traits>
+#include <glm/vec3.hpp>
 
-struct VoxelVertex { 
-    float position[3]; 
-    float normal[3]; 
+struct VoxelVertex {
+    glm::vec3 position;
+    glm::vec3 normal;
 };
-struct ChunkMesh { 
-    std::vector<VoxelVertex> vertices; 
-    std::vector<uint32_t> indices; 
+
+struct ChunkMesh {
+    std::vector<VoxelVertex> vertices;
+    std::vector<uint32_t> indices;
 };
 
 // Keep chunk boundaries closed even when neighbors are unloaded.
@@ -24,10 +28,10 @@ inline ChunkMesh BuildChunkMesh(const Octree& octree) {
                     continue;
                 }
 
-                const int cell[3] = { x, y, z };
+                const glm::ivec3 cell(x, y, z);
                 for (int axis = 0; axis < 3; ++axis) {
                     for (int sign : {-1, 1}) {
-                        int neighbor[3] = { x, y, z };
+                        glm::ivec3 neighbor = cell;
                         neighbor[axis] += sign;
                         if (neighbor[axis] >= 0 && neighbor[axis] < size &&
                             octree.GetVoxel(neighbor[0], neighbor[1], neighbor[2]) != 0) {
@@ -39,7 +43,7 @@ inline ChunkMesh BuildChunkMesh(const Octree& octree) {
                         const int u = (axis + 1) % 3, v = (axis + 2) % 3;
                         constexpr int corners[4][2] = { { 0, 0 },{ 1, 0 },{ 1, 1 },{ 0, 1 } };
                         for (const auto& corner : corners) {
-                            VoxelVertex vertex{ { float(cell[0]), float(cell[1]), float(cell[2]) },{} };
+                            VoxelVertex vertex{ glm::vec3(cell), glm::vec3(0.0f) };
                             vertex.position[axis] += sign > 0 ? 1.0f : 0.0f;
                             vertex.position[u] += float(corner[0]);
                             vertex.position[v] += float(corner[1]);

@@ -1,7 +1,10 @@
 #include "Renderer.h"
 #include "ChunkMesh.h"
 #include <algorithm>
-#include <cmath>
+#include <cstddef>
+#include <type_traits>
+#include <glm/trigonometric.hpp>
+#include <glm/vec4.hpp>
 #include <iostream>
 #include <vector>
 
@@ -18,7 +21,7 @@ namespace {
                     }
                 }
             }
-                        
+
             std::stable_sort(result.begin(), result.end(), [](ChunkCoord a, ChunkCoord b) {
                 return World::Distance(a, {0, 0, 0}) < World::Distance(b, {0, 0, 0});
             });
@@ -28,14 +31,13 @@ namespace {
     }
 
     struct Parameters {
-        float cameraPosition[4];
-        float cameraForward[4];
-        float cameraRight[4];
-        float cameraUp[4];
-        float chunkOrigin[4];
+        glm::vec4 cameraPosition;
+        glm::vec4 cameraForward;
+        glm::vec4 cameraRight;
+        glm::vec4 cameraUp;
+        glm::vec4 chunkOrigin;
         float tanHalfFovY, aspect, nearPlane, farPlane;
     };
-    static_assert(sizeof(Parameters) == 96);
 }
 
 Renderer::Renderer(Device& device, Swapchain& swapchain)
@@ -67,8 +69,8 @@ Renderer::Renderer(Device& device, Swapchain& swapchain)
     m_Pool = std::make_unique<TransientResourcePool>(device, Options::Rendering::TRANSIENT_POOL_BYTES);
 }
 
-bool Renderer::UpdateChunks(Vec3 position) {
-    const ChunkCoord player = World::ChunkCoordinate(position.x, position.y, position.z);
+bool Renderer::UpdateChunks(glm::vec3 position) {
+    const ChunkCoord player = World::ChunkCoordinate(position);
     for (auto it = m_World.chunks.begin(); it != m_World.chunks.end();) {
         if (World::Distance(it->first, player) > Options::World::UNLOAD_RADIUS) {
             // Recorded bindings retain the buffers until GPU completion.
@@ -85,7 +87,7 @@ bool Renderer::UpdateChunks(Vec3 position) {
             break;
         }
 
-        const ChunkCoord coord{player.x + offset.x, player.y + offset.y, player.z + offset.z};
+        const ChunkCoord coord = player + offset;
         if (m_World.chunks.contains(coord)) {
 			// Already loaded, skip...
             continue;
@@ -110,7 +112,7 @@ bool Renderer::UpdateChunks(Vec3 position) {
                 }, chunk.indices) != Result::Success) {
                 m_World.chunks.erase(it);
                 std::cerr << "Failed to upload chunk mesh.\n";
-                
+
                 return false;
             }
             chunk.indexCount = static_cast<uint32_t>(mesh.indices.size());
@@ -132,9 +134,9 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
     });
 
 	constexpr ResourceState backbufferWrite{ PipelineStage::ColorAttachmentOutput, ResourceAccess::ColorAttachmentWrite };
-	constexpr ResourceState depthWrite{ 
+	constexpr ResourceState depthWrite{
         PipelineStage::EarlyFragmentTests | PipelineStage::LateFragmentTests,
-		ResourceAccess::DepthStencilRead | ResourceAccess::DepthStencilWrite 
+		ResourceAccess::DepthStencilRead | ResourceAccess::DepthStencilWrite
     };
     std::vector<RenderGraphUse> uses{
         {backbuffer, backbufferWrite, TextureLayout::ColorAttachment, RenderGraphAccess::Write},
@@ -163,23 +165,21 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
         commands.SetViewport({.width = float(frame.width), .height = float(frame.height)});
         commands.SetScissor({.width = frame.width, .height = frame.height});
         commands.BindPipeline(m_WireframeEnabled ? m_WireframePipeline.Raw() : m_SolidPipeline.Raw());
-        
+
         // Push constants
         const auto position = camera.GetPosition(), forward = camera.GetForward();
         const auto right = camera.GetRight(), up = camera.GetUp();
         Parameters params{
-            {position.x, position.y, position.z, 0}, {forward.x, forward.y, forward.z, 0},
-            {right.x, right.y, right.z, 0}, {up.x, up.y, up.z, 0}, {},
-            std::tan(camera.GetFovYRadians() * 0.5f), float(frame.width) / float(frame.height),
+            glm::vec4(position, 0.0f), glm::vec4(forward, 0.0f),
+            glm::vec4(right, 0.0f), glm::vec4(up, 0.0f), glm::vec4(0.0f),
+            glm::tan(camera.GetFovYRadians() * 0.5f), float(frame.width) / float(frame.height),
             Options::Rendering::NEAR_PLANE, Options::Rendering::FAR_PLANE,
         };
-        
+
 		// Draw all loaded chunks
         for (auto& [coord, chunk] : m_World.chunks) {
             if (chunk.indexCount == 0) continue;
-            params.chunkOrigin[0] = float(coord.x) * Options::World::CHUNK_SIZE;
-            params.chunkOrigin[1] = float(coord.y) * Options::World::CHUNK_SIZE;
-            params.chunkOrigin[2] = float(coord.z) * Options::World::CHUNK_SIZE;
+            params.chunkOrigin = glm::vec4(glm::vec3(coord) * float(Options::World::CHUNK_SIZE), 0.0f);
             commands.SetPushConstants(&params, sizeof(params));
             commands.BindVertexBuffer(chunk.vertices.Raw());
             commands.BindIndexBuffer(chunk.indices.Raw());

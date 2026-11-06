@@ -18,7 +18,7 @@ public:
 	size_t GetLoadedChunkCount() const { return m_World.chunks.size(); }
 
 private:
-	bool UpdateChunks(Vec3 position);
+	bool UpdateChunks(glm::vec3 position);
 	Device& m_Device;
 	Swapchain& m_Swapchain;
 	Ref<Pipeline> m_SolidPipeline;

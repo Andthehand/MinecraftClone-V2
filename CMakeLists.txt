@@ -19,10 +19,20 @@ endif()
 
 add_subdirectory(external/RealRHI)
 
+include(FetchContent)
+set(GLM_BUILD_LIBRARY OFF CACHE BOOL "Build the GLM library")
+set(GLM_BUILD_TESTS OFF CACHE BOOL "Build GLM tests")
+set(GLM_BUILD_INSTALL OFF CACHE BOOL "Generate GLM install rules")
+FetchContent_Declare(glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG 8d1fd52e5ab5590e2c81768ace50c72bae28f2ed # 1.0.3
+)
+FetchContent_MakeAvailable(glm)
+
 add_executable(MinecraftClone src/main.cpp "src/Options.h" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Camera.cpp" "src/Octree.h" "src/Octree.cpp" "src/World.h" "src/ChunkMesh.h")
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
-target_link_libraries(MinecraftClone PRIVATE RealRHI)
+target_link_libraries(MinecraftClone PRIVATE RealRHI glm::glm)
 
 add_custom_command(TARGET MinecraftClone POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory

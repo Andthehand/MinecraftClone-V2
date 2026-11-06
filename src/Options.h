@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <numbers>
+#include <glm/vec3.hpp>
 
 // Compile-time settings: edit here and rebuild. Derived values update automatically.
 namespace Options {
@@ -31,7 +31,7 @@ namespace Rendering {
     static_assert(NEAR_PLANE > 0 && FAR_PLANE > NEAR_PLANE);
 }
 namespace Camera {
-    inline constexpr float START_POSITION[3] = {0.0f, 8.0f, -12.0f};
+    inline constexpr glm::vec3 START_POSITION = {0.0f, 8.0f, -12.0f};
     inline constexpr float START_YAW_DEGREES = 90.0f;
     inline constexpr float START_PITCH_DEGREES = 0.0f;
     inline constexpr float FOV_Y_DEGREES = 70.0f;
@@ -48,10 +48,5 @@ namespace Application {
     inline constexpr uint32_t WINDOW_HEIGHT = 600;
     inline constexpr bool ENABLE_DEBUG = true;
     inline constexpr uint32_t MINIMIZED_DELAY_MS = 16;
-}
-namespace Math {
-    inline constexpr float PI = std::numbers::pi_v<float>;
-    inline constexpr float HALF_PI = PI * 0.5f;
-    inline constexpr float DEGREES_TO_RADIANS = PI / 180.0f;
 }
 }

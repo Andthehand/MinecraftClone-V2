@@ -3,15 +3,13 @@
 #include "Options.h"
 #include <Buffer.h>
 
-#include <algorithm>
-#include <cmath>
+#include <glm/common.hpp>
+#include <glm/geometric.hpp>
+#include <glm/vec3.hpp>
 #include <functional>
 #include <unordered_map>
 
-struct ChunkCoord {
-    int32_t x, y, z;
-    bool operator==(const ChunkCoord&) const = default;
-};
+using ChunkCoord = glm::ivec3;
 
 struct ChunkCoordHash {
     size_t operator()(ChunkCoord c) const noexcept {
@@ -34,17 +32,16 @@ public:
     };
     std::unordered_map<ChunkCoord, Chunk, ChunkCoordHash> chunks;
 
-    // Chunk coords are are not voxel coordinates
+    // Floor before converting so negative positions map to the correct chunk.
 	[[nodiscard]]
-    static ChunkCoord ChunkCoordinate(float x, float y, float z) {
-        return {static_cast<int32_t>(std::floor(x / Options::World::CHUNK_SIZE)),
-                static_cast<int32_t>(std::floor(y / Options::World::CHUNK_SIZE)),
-                static_cast<int32_t>(std::floor(z / Options::World::CHUNK_SIZE))};
+    static ChunkCoord ChunkCoordinate(glm::vec3 position) {
+        return ChunkCoord(glm::floor(position / float(Options::World::CHUNK_SIZE)));
     }
 
 	[[nodiscard]]
     static int Distance(ChunkCoord a, ChunkCoord b) {
-        return std::max({std::abs(a.x - b.x), std::abs(a.y - b.y), std::abs(a.z - b.z)});
+        const auto delta = glm::abs(a - b);
+        return glm::max(delta.x, glm::max(delta.y, delta.z));
     }
 
     // Preserve the sphere demo, repeated in world space to make streaming visible.
@@ -54,10 +51,8 @@ public:
         for (uint32_t z = 0; z < Options::World::CHUNK_SIZE; ++z)
             for (uint32_t y = 0; y < Options::World::CHUNK_SIZE; ++y)
                 for (uint32_t x = 0; x < Options::World::CHUNK_SIZE; ++x) {
-                    const float dx = x + 0.5f - CENTER;
-                    const float dy = y + 0.5f - CENTER;
-                    const float dz = z + 0.5f - CENTER;
-                    if (dx * dx + dy * dy + dz * dz <= RADIUS * RADIUS)
+                    const glm::vec3 offset = glm::vec3(x, y, z) + glm::vec3(0.5f - CENTER);
+                    if (glm::dot(offset, offset) <= RADIUS * RADIUS)
                         octree.SetVoxel(x, y, z, Options::World::SPHERE_VOXEL_ID);
                 }
     }
