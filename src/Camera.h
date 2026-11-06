@@ -18,6 +18,7 @@ public:
 	[[nodiscard]] glm::vec3 GetUp() const;
 	[[nodiscard]] float GetFovYRadians() const;
 	[[nodiscard]] glm::mat4 GetViewMatrix() const;
+	[[nodiscard]] glm::mat4 GetProjectionMatrix(float aspectRatio) const;
 
 private:
 	glm::vec3 m_Position;

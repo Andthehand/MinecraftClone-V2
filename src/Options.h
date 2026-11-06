@@ -14,7 +14,7 @@ namespace World {
     inline constexpr int LOAD_RADIUS = MESH_RADIUS + 1;
     inline constexpr int UNLOAD_RADIUS = LOAD_RADIUS + 1;
 
-    inline constexpr uint32_t CHUNKS_LOADED_PER_FRAME = 10;
+    inline constexpr uint32_t CHUNKS_LOADED_PER_FRAME = 5;
 
     inline constexpr int TERRAIN_SEED = 1337;
     inline constexpr float TERRAIN_FEATURE_SCALE = 128.0f; // Width of broad hills in voxels.
@@ -30,12 +30,25 @@ namespace World {
     static_assert(TERRAIN_HEIGHT_AMPLITUDE >= 0 && TERRAIN_DIRT_DEPTH >= 0);
 }
 namespace Rendering {
-    inline constexpr uint64_t TRANSIENT_POOL_BYTES = 64ull * 1024 * 1024;
+    inline constexpr uint64_t TRANSIENT_POOL_BYTES = 256ull * 1024 * 1024;
     inline constexpr const char* SHADER_MODULE = "raster.slang";
+    inline constexpr const char* SKY_SHADER_MODULE = "sky.slang";
+    inline constexpr const char* SHADOW_SHADER_MODULE = "shadow.slang";
+    inline constexpr uint32_t SHADOW_RESOLUTION = 4096;
+    inline constexpr float SHADOW_RADIUS = 128.0f;
+    inline constexpr glm::vec3 SUN_DIRECTION = {0.4f, 0.85f, 0.3f}; // Toward the sun.
+    
+    // Camera
     inline constexpr float NEAR_PLANE = 0.1f;
     inline constexpr float FAR_PLANE = (World::UNLOAD_RADIUS + 2) * World::CHUNK_SIZE * 2.0f;
+    
+    // Fog
+    inline constexpr float FOG_END = (World::MESH_RADIUS > 0 ? World::MESH_RADIUS : 1) * World::CHUNK_SIZE * 0.9f;
+    inline constexpr float FOG_START = FOG_END * 0.5f;
 
     static_assert(NEAR_PLANE > 0 && FAR_PLANE > NEAR_PLANE);
+    static_assert(FOG_START >= 0 && FOG_END > FOG_START && FOG_END < FAR_PLANE);
+    static_assert(SHADOW_RESOLUTION > 0 && SHADOW_RADIUS > 0);
 }
 namespace Camera {
     inline constexpr glm::vec3 START_POSITION = {

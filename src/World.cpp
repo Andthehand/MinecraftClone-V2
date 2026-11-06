@@ -13,15 +13,14 @@ size_t ChunkCoordHash::operator()(ChunkCoord c) const noexcept {
 
 ChunkMeshNeighbors World::GetChunkNeighbors(ChunkCoord coord) const {
     ChunkMeshNeighbors result{};
-    for (int axis = 0; axis < 3; ++axis) {
-        for (int sign : {-1, 1}) {
-            auto neighbor = coord;
-            neighbor[axis] += sign;
-            const auto it = chunks.find(neighbor);
-            if (it != chunks.end())
-                result[axis * 2 + (sign > 0 ? 1 : 0)] = &it->second.octree;
-        }
-    }
+    for (int z = -1; z <= 1; ++z)
+        for (int y = -1; y <= 1; ++y)
+            for (int x = -1; x <= 1; ++x) {
+                if (x == 0 && y == 0 && z == 0) continue;
+                const auto it = chunks.find(coord + ChunkCoord(x, y, z));
+                if (it != chunks.end())
+                    result[ChunkNeighborIndex(x, y, z)] = &it->second.octree;
+            }
     return result;
 }
 
@@ -29,8 +28,8 @@ bool World::CanMeshChunk(ChunkCoord coord, ChunkCoord player) const {
     if (Distance(coord, player) > Options::World::MESH_RADIUS || !chunks.contains(coord))
         return false;
     const auto neighbors = GetChunkNeighbors(coord);
-    for (const auto* neighbor : neighbors)
-        if (!neighbor) return false;
+    for (size_t i = 0; i < neighbors.size(); ++i)
+        if (i != ChunkNeighborIndex(0, 0, 0) && !neighbors[i]) return false;
     return true;
 }
 

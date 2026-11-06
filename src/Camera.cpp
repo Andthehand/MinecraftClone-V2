@@ -6,6 +6,7 @@
 #include <glm/trigonometric.hpp>
 #include <glm/gtc/constants.hpp>
 #include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/matrix_clip_space.hpp>
 
 Camera::Camera()
 	: m_Position(Options::Camera::START_POSITION)
@@ -67,4 +68,13 @@ float Camera::GetFovYRadians() const {
 glm::mat4 Camera::GetViewMatrix() const {
 	// World forward remains +Z initially; visible points have negative view-space Z.
 	return glm::lookAtRH(m_Position, m_Position + GetForward(), GetUp());
+}
+
+glm::mat4 Camera::GetProjectionMatrix(float aspectRatio) const {
+	auto projection = glm::perspectiveRH_ZO(m_FovYRadians, aspectRatio,
+		Options::Rendering::NEAR_PLANE, Options::Rendering::FAR_PLANE);
+	// Vulkan uses [0, 1] depth and a positive-height viewport.
+	projection[1][1] *= -1.0f;
+	
+	return projection;
 }
