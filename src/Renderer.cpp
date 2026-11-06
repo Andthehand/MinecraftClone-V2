@@ -117,7 +117,7 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
 
         auto it = m_World.chunks.try_emplace(coord).first;
         auto& chunk = it->second;
-        World::Generate(chunk.octree);
+        m_World.Generate(chunk.octree, coord);
         const ChunkMesh mesh = BuildChunkMesh(chunk.octree);
         if (!mesh.indices.empty()) {
             if (m_Device.CreateBuffer({

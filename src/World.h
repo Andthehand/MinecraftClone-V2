@@ -1,6 +1,7 @@
 #pragma once
 #include "Octree.h"
 #include "Options.h"
+#include "TerrainGenerator.h"
 #include <Buffer.h>
 
 #include <glm/common.hpp>
@@ -44,16 +45,10 @@ public:
         return glm::max(delta.x, glm::max(delta.y, delta.z));
     }
 
-    // Preserve the sphere demo, repeated in world space to make streaming visible.
-    static void Generate(Octree& octree) {
-        constexpr float CENTER = Options::World::CHUNK_SIZE * 0.5f;
-        constexpr float RADIUS = Options::World::CHUNK_SIZE * Options::World::SPHERE_RADIUS_RATIO;
-        for (uint32_t z = 0; z < Options::World::CHUNK_SIZE; ++z)
-            for (uint32_t y = 0; y < Options::World::CHUNK_SIZE; ++y)
-                for (uint32_t x = 0; x < Options::World::CHUNK_SIZE; ++x) {
-                    const glm::vec3 offset = glm::vec3(x, y, z) + glm::vec3(0.5f - CENTER);
-                    if (glm::dot(offset, offset) <= RADIUS * RADIUS)
-                        octree.SetVoxel(x, y, z, Options::World::SPHERE_VOXEL_ID);
-                }
+    void Generate(Octree& octree, ChunkCoord coord) const {
+        m_Terrain.Generate(octree, coord);
     }
+
+private:
+    TerrainGenerator m_Terrain;
 };

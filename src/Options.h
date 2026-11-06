@@ -14,13 +14,18 @@ namespace World {
 
     inline constexpr uint32_t CHUNKS_LOADED_PER_FRAME = 4;
 
-	// TODO: Remove when debug sphere is no longer used.
-    inline constexpr float SPHERE_RADIUS_RATIO = 0.45f;
-    inline constexpr uint32_t SPHERE_VOXEL_ID = 1;
+    inline constexpr int TERRAIN_SEED = 1337;
+    inline constexpr float TERRAIN_FEATURE_SCALE = 128.0f; // Width of broad hills in voxels.
+    inline constexpr int TERRAIN_OCTAVES = 4;
+    inline constexpr int TERRAIN_BASE_HEIGHT = 24;
+    inline constexpr int TERRAIN_HEIGHT_AMPLITUDE = 20;
+    inline constexpr int TERRAIN_DIRT_DEPTH = 3; // Dirt blocks below the grass surface.
 
     static_assert(OCTREE_DEPTH < 31);
     static_assert(LOAD_RADIUS >= 0 && UNLOAD_RADIUS > LOAD_RADIUS);
     static_assert(CHUNKS_LOADED_PER_FRAME > 0);
+    static_assert(TERRAIN_FEATURE_SCALE > 0 && TERRAIN_OCTAVES > 0);
+    static_assert(TERRAIN_HEIGHT_AMPLITUDE >= 0 && TERRAIN_DIRT_DEPTH >= 0);
 }
 namespace Rendering {
     inline constexpr uint64_t TRANSIENT_POOL_BYTES = 64ull * 1024 * 1024;
@@ -31,9 +36,10 @@ namespace Rendering {
     static_assert(NEAR_PLANE > 0 && FAR_PLANE > NEAR_PLANE);
 }
 namespace Camera {
-    inline constexpr glm::vec3 START_POSITION = {0.0f, 8.0f, -12.0f};
+    inline constexpr glm::vec3 START_POSITION = {
+        0.0f, float(World::TERRAIN_BASE_HEIGHT + World::TERRAIN_HEIGHT_AMPLITUDE + 8), -12.0f};
     inline constexpr float START_YAW_DEGREES = 90.0f;
-    inline constexpr float START_PITCH_DEGREES = 0.0f;
+    inline constexpr float START_PITCH_DEGREES = -20.0f;
     inline constexpr float FOV_Y_DEGREES = 70.0f;
     inline constexpr float PITCH_LIMIT_MARGIN_RADIANS = 0.01f;
     inline constexpr float MOVE_SPEED = 32.0f; // World units per second.

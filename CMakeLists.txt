@@ -29,11 +29,25 @@ FetchContent_Declare(glm
 )
 FetchContent_MakeAvailable(glm)
 
-add_executable(MinecraftClone src/main.cpp "src/Options.h" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Camera.cpp" "src/Octree.h" "src/Octree.cpp" "src/World.h" "src/ChunkMesh.h")
+set(FASTNOISE2_TOOLS OFF CACHE BOOL "Build FastNoise2 tools")
+set(FASTNOISE2_TESTS OFF CACHE BOOL "Build FastNoise2 tests")
+set(FASTNOISE2_STRICT_FP ON CACHE BOOL "Keep terrain consistent across SIMD implementations")
+FetchContent_Declare(FastNoise2
+    GIT_REPOSITORY https://github.com/Auburn/FastNoise2.git
+    GIT_TAG 903c1f2d2f9d53ddce94cd223f32727d9ab3aeaa # v1.1.1
+)
+FetchContent_MakeAvailable(FastNoise2)
+
+add_library(TerrainGenerator STATIC src/TerrainGenerator.cpp src/Octree.cpp)
+target_include_directories(TerrainGenerator PUBLIC src)
+target_compile_features(TerrainGenerator PUBLIC cxx_std_23)
+target_link_libraries(TerrainGenerator PUBLIC glm::glm FastNoise)
+
+add_executable(MinecraftClone src/main.cpp "src/Options.h" "src/Renderer.h" "src/Renderer.cpp" "src/Camera.h" "src/Camera.cpp" "src/Octree.h" "src/World.h" "src/ChunkMesh.h")
 target_sources(MinecraftClone PRIVATE src/VoxelTextures.h)
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
-target_link_libraries(MinecraftClone PRIVATE RealRHI glm::glm)
+target_link_libraries(MinecraftClone PRIVATE RealRHI TerrainGenerator)
 
 add_custom_command(TARGET MinecraftClone POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory

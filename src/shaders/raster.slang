@@ -40,7 +40,7 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     atlas.GetDimensions(width, height);
     // Clamp within each tile's texel centers so adjacent materials cannot bleed.
     float tileSize = float(height);
-    float2 pixel = clamp(input.uv * tileSize, 0.5f, tileSize - 0.5f);
+    float2 pixel = clamp(frac(input.uv) * tileSize, 0.5f, tileSize - 0.5f);
     float2 atlasUV = (pixel + float2(float(input.tile) * tileSize, 0.0f)) / float2(width, height);
     
     return atlas.Sample(pixelSampler, atlasUV);

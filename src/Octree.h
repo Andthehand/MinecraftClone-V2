@@ -5,7 +5,9 @@
 #include <memory>
 
 struct Node {
-	std::array<std::unique_ptr<Node>, 8> children;
+	// A leaf represents an entire uniform region, including solid regions.
+	// Allocate all eight children together only when that region is edited.
+	std::unique_ptr<std::array<Node, 8>> children;
 	uint32_t voxel = 0;
 };
 
@@ -23,12 +25,14 @@ public:
 	uint32_t GetSideLength() const noexcept { return SideLength; }
 
 	void RemoveVoxel(std::uint32_t x, std::uint32_t y, std::uint32_t z);
+	void Fill(std::uint32_t voxel);
+	bool IsUniform() const noexcept { return !m_Root.children; }
 private:
 	static std::uint32_t ChildIndex(std::uint32_t x, std::uint32_t y,
 		std::uint32_t z, std::size_t bit) noexcept;
 
-	// Returns true when this subtree is empty, allowing its parent to prune it.
-	static bool EraseNode(Node& node, std::uint32_t x, std::uint32_t y, std::uint32_t z, std::size_t remaining);
+	static void SetNode(Node& node, std::uint32_t x, std::uint32_t y,
+		std::uint32_t z, std::size_t remaining, std::uint32_t voxel);
 private:
 	const uint32_t m_Depth;
 	const uint32_t SideLength;
