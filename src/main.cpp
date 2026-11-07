@@ -4,8 +4,6 @@ using namespace RealRHI;
 #include <SDL3/SDL.h>
 
 #include <chrono>
-#include <charconv>
-#include <string_view>
 #include <iostream>
 #include <print> // required for std::println
 
@@ -79,7 +77,6 @@ int main() {
 
 	Renderer renderer(*device, *swapchain);
 	Camera camera;
-
 	auto previousFrameTime = std::chrono::steady_clock::now();
 	bool running = true;
 	while (running) {
@@ -123,6 +120,7 @@ int main() {
 		if (!renderer.DrawFrame(frame, camera)) {
 			return 1;
 		}
+
 	}
 
 	device->WaitIdle();

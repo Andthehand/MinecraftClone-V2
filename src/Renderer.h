@@ -3,9 +3,9 @@
 #include <RenderGraph/RenderGraph.h>
 #include <RenderGraph/TransientResourcePool.h>
 #include <vector>
-#include <chrono>
 
 #include "Camera.h"
+#include "Sun.h"
 #include "World.h"
 
 using namespace RealRHI;
@@ -17,21 +17,17 @@ public:
 
 	bool DrawFrame(const FrameContext& frameContext, const Camera& camera);
 	void ToggleWireframe() { m_WireframeEnabled = !m_WireframeEnabled; }
-	size_t GetLoadedChunkCount() const { return m_World.chunks.size(); }
 
 private:
 	bool CreateVoxelPipeline();
-	bool CreateShadowPipeline();
 	bool CreateSkyPipeline();
 
 	bool UpdateChunks(glm::vec3 position);
-    glm::vec3 GetSunDirection() const;
+    bool UpdateVoxelShadowVolume(glm::vec3 position);
 
     struct FrameResources;
     std::vector<RenderGraphUse> GetChunkResources(RenderGraph& graph, ChunkCoord player);
-    void AddShadowDataPass(RenderGraph& graph, FrameResources& resources, const glm::mat4& lightViewProjection);
-    void AddShadowPass(RenderGraph& graph, FrameResources& resources,
-        const glm::mat4& lightViewProjection, ChunkCoord player);
+    void AddSunDataPass(RenderGraph& graph, FrameResources& resources);
     void AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
         const FrameContext& frame, const Camera& camera, ChunkCoord player);
 private:
@@ -42,14 +38,13 @@ private:
 	Ref<Pipeline> m_SolidPipeline;
 	Ref<Pipeline> m_WireframePipeline;
     Ref<Pipeline> m_SkyPipeline;
-    Ref<Pipeline> m_ShadowPipeline;
-
-    Ref<Sampler> m_ShadowSampler;
 
 	Ref<Texture> m_VoxelAtlas;
 	Ref<Sampler> m_VoxelSampler;
 	bool m_WireframeEnabled = false;
-    const std::chrono::steady_clock::time_point m_SunStartTime = std::chrono::steady_clock::now();
+    Ref<Buffer> m_VoxelShadowVolume;
+    ChunkCoord m_VoxelShadowCenter{};
+    Sun m_Sun;
 
 	World m_World;
 };

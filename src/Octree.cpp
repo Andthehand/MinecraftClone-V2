@@ -3,13 +3,11 @@
 #include <stdexcept>
 
 Octree::Octree(uint32_t depth) 
-	: m_Depth(depth), SideLength(std::uint32_t{ 1 } << depth) {}
+	: m_Depth(depth), m_SideLength(std::uint32_t{ 1 } << depth) {}
 
 void Octree::CopyVoxels(std::span<std::uint32_t> destination) const {
 	// Divide to validate even volumes whose voxel count would overflow size_t.
-	if (destination.size() / SideLength / SideLength < SideLength)
-		throw std::invalid_argument("CopyVoxels destination is too small");
-	CopyNode(m_Root, destination.data(), SideLength, SideLength);
+	CopyNode(m_Root, destination.data(), m_SideLength, m_SideLength);
 }
 
 void Octree::CopyNode(const Node& node, std::uint32_t* destination,

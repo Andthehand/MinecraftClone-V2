@@ -1,6 +1,8 @@
 #include "atmosphere.slang"
+#include "voxel_shadow.slang"
 
-struct Parameters {
+// Matches VoxelParameters in Renderer.cpp; field order is part of the upload layout.
+struct VoxelParameters {
     column_major float4x4 viewProjection;
     float4 chunkOrigin;
     float4 cameraPositionFogStart;
@@ -8,45 +10,27 @@ struct Parameters {
     uint textureIndex;
     uint samplerIndex;
     uint vertexBufferIndex;
-    uint shadowDataIndex;
-    uint shadowTextureIndex;
-    uint shadowSamplerIndex;
+    uint sunDataIndex;
+    uint voxelShadowIndex;
 };
-[[vk::push_constant]] ConstantBuffer<Parameters> parameters;
+[[vk::push_constant]] ConstantBuffer<VoxelParameters> parameters;
 
-struct ShadowData {
-    column_major float4x4 viewProjection;
-    float4 sunDirectionRadius;
-    float4 texelBiasFade;
+// Matches the CPU SunData's direction followed by the four raySettings components.
+struct SunData {
+    float4 sunDirection;
+    float shadowFadeEndDistance;
+    float shadowFadeStartDistance;
+    float shadowMaxRayLength;
+    float shadowVolumeAvailable;
 };
 
-[require(spvDescriptorHeapEXT)]
-float ShadowVisibility(float3 worldPosition, float3 normal, float distance, ShadowData data) {
-    float fade = smoothstep(data.texelBiasFade.z, data.sunDirectionRadius.w, distance);
-    if (fade >= 1.0f) {
-        return 1.0f;
-    }
-
-    float4 lightPosition = mul(data.viewProjection, float4(worldPosition + normal * data.texelBiasFade.w, 1.0f));
-    float3 projected = lightPosition.xyz / lightPosition.w;
-    float2 uv = projected.xy * 0.5f + 0.5f;
-    if (any(uv < 0.0f) || any(uv > 1.0f) || projected.z < 0.0f || projected.z > 1.0f) {
-        return 1.0f;
-    }
-
-    Texture2D<float> shadow = Texture2D<float>.Handle(uint2(parameters.shadowTextureIndex, 0));
-    SamplerComparisonState shadowSampler = SamplerComparisonState.Handle(uint2(parameters.shadowSamplerIndex, 0));
-
-    // Filter comparison results for a soft edge without blending depth values.
-    float visibility = 0.0f;
-    for (int y = -1; y <= 1; ++y) {
-        for (int x = -1; x <= 1; ++x) {
-            visibility += shadow.SampleCmpLevelZero(shadowSampler,
-                uv + float2(x, y) * data.texelBiasFade.x, projected.z - data.texelBiasFade.y);
-        }
-    }
-    return lerp(visibility / 9.0f, 1.0f, fade);
-}
+struct VoxelVertex {
+    float3 position;
+    float3 normal;
+    float2 uv;
+    uint tile;
+    float occlusion;
+};
 
 struct VertexOutput {
     float4 position : SV_Position;
@@ -58,63 +42,106 @@ struct VertexOutput {
 };
 
 [require(spvDescriptorHeapEXT)]
+VoxelVertex LoadVoxelVertex(uint vertexID) {
+    ByteAddressBuffer vertices = ByteAddressBuffer.Handle(uint2(parameters.vertexBufferIndex, 0));
+    // Match the packed 40-byte CPU vertex; explicit loads avoid float3 alignment differences.
+    uint vertexByteOffset = vertexID * 40u;
+    VoxelVertex vertex;
+    vertex.position = asfloat(vertices.Load3(vertexByteOffset));
+    vertex.normal = asfloat(vertices.Load3(vertexByteOffset + 12u));
+    vertex.uv = asfloat(vertices.Load2(vertexByteOffset + 24u));
+    vertex.tile = vertices.Load(vertexByteOffset + 32u);
+    vertex.occlusion = asfloat(vertices.Load(vertexByteOffset + 36u));
+    return vertex;
+}
+
+[require(spvDescriptorHeapEXT)]
 [shader("vertex")]
 VertexOutput vertexMain(uint vertexID : SV_VertexID) {
-    ByteAddressBuffer vertices = ByteAddressBuffer.Handle(uint2(parameters.vertexBufferIndex, 0));
-    // Match VoxelVertex's packed CPU layout; byte loads avoid float3 alignment differences.
-    uint offset = vertexID * 40u;
-    float3 position = asfloat(vertices.Load3(offset));
-    float3 normal = asfloat(vertices.Load3(offset + 12u));
-    float2 uv = asfloat(vertices.Load2(offset + 24u));
-    uint tile = vertices.Load(offset + 32u);
-    float occlusion = asfloat(vertices.Load(offset + 36u));
-    float3 worldPosition = position + parameters.chunkOrigin.xyz;
+    VoxelVertex vertex = LoadVoxelVertex(vertexID);
+    float3 worldPosition = vertex.position + parameters.chunkOrigin.xyz;
 
     VertexOutput output;
     output.position = mul(parameters.viewProjection, float4(worldPosition, 1.0f));
-    output.uv = uv;
-    output.tile = tile;
-    
+    output.uv = vertex.uv;
+    output.tile = vertex.tile;
     // Chunks are translated only, so mesh normals are already in world space.
-    output.normal = normal;
-    output.occlusion = occlusion;
+    output.normal = vertex.normal;
+    output.occlusion = vertex.occlusion;
     output.worldPosition = worldPosition;
-
     return output;
+}
+
+[require(spvDescriptorHeapEXT)]
+float4 SampleVoxelAlbedo(float2 uv, uint tile) {
+    Texture2D atlas = Texture2D.Handle(uint2(parameters.textureIndex, 0));
+    SamplerState pixelSampler = SamplerState.Handle(uint2(parameters.samplerIndex, 0));
+    uint atlasWidth, atlasHeight;
+    atlas.GetDimensions(atlasWidth, atlasHeight);
+
+    // Square tiles form one horizontal strip. Stay within texel centers to prevent bleeding.
+    float tileSize = float(atlasHeight);
+    float2 tilePixel = clamp(frac(uv) * tileSize, 0.5f, tileSize - 0.5f);
+    float2 tileOrigin = float2(float(tile) * tileSize, 0.0f);
+    float2 atlasUV = (tileOrigin + tilePixel) / float2(atlasWidth, atlasHeight);
+    return atlas.Sample(pixelSampler, atlasUV);
+}
+
+[require(spvDescriptorHeapEXT)]
+float CalculateSunVisibility(SunData sun, float3 worldPosition, float3 normal, float cameraDistance) {
+    float shadowFade = smoothstep(sun.shadowFadeStartDistance, sun.shadowFadeEndDistance, cameraDistance);
+    if (sun.shadowVolumeAvailable <= 0.5f || shadowFade >= 1.0f) {
+        return SHADOW_CLEAR;
+    }
+
+    float tracedVisibility = TraceVoxelSun(
+        parameters.voxelShadowIndex, worldPosition, normal, sun.sunDirection.xyz, sun.shadowMaxRayLength
+    );
+    // Outside known coverage, keep direct sunlight instead of inventing a blocker.
+    if (tracedVisibility < 0.0f) {
+        return SHADOW_CLEAR;
+    }
+    return lerp(tracedVisibility, SHADOW_CLEAR, shadowFade);
+}
+
+[require(spvDescriptorHeapEXT)]
+float3 CalculateLighting(SunData sun, float3 worldPosition, float3 normal, float cameraDistance) {
+    float3 sunDirection = sun.sunDirection.xyz;
+    // Cool ambient skylight remains in shadow; direct sunlight is gently warm.
+    const float3 nightAmbient = float3(0.025f, 0.035f, 0.060f);
+    const float3 dayAmbient = float3(0.30f, 0.34f, 0.40f);
+    const float3 sunColor = float3(1.00f, 0.94f, 0.82f);
+    const float sunIntensity = 0.80f;
+    float3 ambientLight = lerp(nightAmbient, dayAmbient, DaylightAmount(sunDirection));
+
+    float surfaceSunlight = saturate(dot(normalize(normal), sunDirection));
+    float horizonFade = smoothstep(0.0f, 0.12f, sunDirection.y);
+    float sunlight = surfaceSunlight * horizonFade;
+    float visibility = SHADOW_CLEAR;
+    if (sunlight > 0.0f) {
+        visibility = CalculateSunVisibility(sun, worldPosition, normal, cameraDistance);
+    }
+    return ambientLight + sunColor * sunIntensity * sunlight * visibility;
 }
 
 [require(spvDescriptorHeapEXT)]
 [shader("fragment")]
 float4 fragmentMain(VertexOutput input) : SV_Target {
-    Texture2D atlas = Texture2D.Handle(uint2(parameters.textureIndex, 0));
-    SamplerState pixelSampler = SamplerState.Handle(uint2(parameters.samplerIndex, 0));
-    uint width, height;
-    atlas.GetDimensions(width, height);
-    // Clamp within each tile's texel centers so adjacent materials cannot bleed.
-    float tileSize = float(height);
-    float2 pixel = clamp(frac(input.uv) * tileSize, 0.5f, tileSize - 0.5f);
-    float2 atlasUV = (pixel + float2(float(input.tile) * tileSize, 0.0f)) / float2(width, height);
-    
-    float4 albedo = atlas.Sample(pixelSampler, atlasUV);
-    // Direction toward a fixed sun. Ambient light keeps unlit faces readable.
-    StructuredBuffer<ShadowData> shadowData = StructuredBuffer<ShadowData>.Handle(uint2(parameters.shadowDataIndex, 0));
-    ShadowData sun = shadowData[0];
-    float3 sunDirection = sun.sunDirectionRadius.xyz;
-    // Cool skylight in shadow, with gently warm direct sunlight.
-    float3 ambientLight = lerp(float3(0.025f, 0.035f, 0.060f), float3(0.30f, 0.34f, 0.40f), DaylightAmount(sunDirection));
-    const float3 sunColor = float3(1.00f, 0.94f, 0.82f);
-    const float sunIntensity = 0.80f;
-    float sunlight = saturate(dot(normalize(input.normal), sunDirection)) * smoothstep(0.0f, 0.12f, sunDirection.y);
-    float3 toSurface = input.worldPosition - parameters.cameraPositionFogStart.xyz;
-    float distance = length(toSurface);
-    float visibility = sunlight > 0.0f ? ShadowVisibility(input.worldPosition, input.normal, distance, sun) : 1.0f;
-    float3 lighting = ambientLight + sunColor * sunIntensity * sunlight * visibility;
+    StructuredBuffer<SunData> sunBuffer = StructuredBuffer<SunData>.Handle(uint2(parameters.sunDataIndex, 0));
+    SunData sun = sunBuffer[0];
+    float3 cameraToSurface = input.worldPosition - parameters.cameraPositionFogStart.xyz;
+    float cameraDistance = length(cameraToSurface);
+
+    float4 albedo = SampleVoxelAlbedo(input.uv, input.tile);
+    float3 lighting = CalculateLighting(sun, input.worldPosition, input.normal, cameraDistance);
     // Strengthen contact shading in linear light; open faces stay at full brightness.
     const float aoContrast = 3.0f;
-    float occlusion = pow(saturate(input.occlusion), aoContrast);
-    float3 litColor = albedo.rgb * lighting * occlusion;
-    float fog = smoothstep(parameters.cameraPositionFogStart.w, parameters.fogEnd, distance);
-    float3 fogColor = SkyColor(toSurface / max(distance, 0.0001f), sunDirection);
-    
-    return float4(lerp(litColor, fogColor, fog), albedo.a);
+    float ambientOcclusion = pow(saturate(input.occlusion), aoContrast);
+    float3 litColor = albedo.rgb * lighting * ambientOcclusion;
+
+    float fogStartDistance = parameters.cameraPositionFogStart.w;
+    float fogAmount = smoothstep(fogStartDistance, parameters.fogEnd, cameraDistance);
+    float3 viewDirection = cameraToSurface / max(cameraDistance, 0.0001f);
+    float3 fogColor = SkyColor(viewDirection, sun.sunDirection.xyz);
+    return float4(lerp(litColor, fogColor, fogAmount), albedo.a);
 }

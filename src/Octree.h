@@ -37,7 +37,7 @@ public:
 	void CopyVoxels(std::span<std::uint32_t> destination) const;
 	void SetVoxel(std::uint32_t x, std::uint32_t y, std::uint32_t z, std::uint32_t voxel);
 
-	uint32_t GetSideLength() const noexcept { return SideLength; }
+	uint32_t GetSideLength() const noexcept { return m_SideLength; }
 
 	void RemoveVoxel(std::uint32_t x, std::uint32_t y, std::uint32_t z);
 	void Fill(std::uint32_t voxel);
@@ -56,7 +56,7 @@ private:
 		std::size_t stride, std::uint32_t size);
 private:
 	const uint32_t m_Depth;
-	const uint32_t SideLength;
+	const uint32_t m_SideLength;
 
 	Node m_Root;
 };
