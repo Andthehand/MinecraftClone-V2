@@ -36,7 +36,9 @@ namespace Rendering {
     inline constexpr const char* SHADOW_SHADER_MODULE = "shadow.slang";
     inline constexpr uint32_t SHADOW_RESOLUTION = 4096;
     inline constexpr float SHADOW_RADIUS = 128.0f;
-    inline constexpr glm::vec3 SUN_DIRECTION = {0.4f, 0.85f, 0.3f}; // Toward the sun.
+    inline constexpr glm::vec3 SUN_DIRECTION = {0.4f, 0.85f, 0.3f}; // Initial direction toward the sun.
+    inline constexpr float SUN_ANGULAR_SIZE_DEGREES = 6.0f;
+    inline constexpr double SUN_ORBIT_PERIOD_SECONDS = 5000.0;
     
     // Camera
     inline constexpr float NEAR_PLANE = 0.1f;
@@ -49,6 +51,8 @@ namespace Rendering {
     static_assert(NEAR_PLANE > 0 && FAR_PLANE > NEAR_PLANE);
     static_assert(FOG_START >= 0 && FOG_END > FOG_START && FOG_END < FAR_PLANE);
     static_assert(SHADOW_RESOLUTION > 0 && SHADOW_RADIUS > 0);
+    static_assert(SUN_ANGULAR_SIZE_DEGREES > 0 && SUN_ANGULAR_SIZE_DEGREES < 180);
+    static_assert(SUN_ORBIT_PERIOD_SECONDS > 0);
 }
 namespace Camera {
     inline constexpr glm::vec3 START_POSITION = {

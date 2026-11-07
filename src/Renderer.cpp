@@ -4,9 +4,11 @@
 #include "ShadowCamera.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <type_traits>
 #include <glm/vec4.hpp>
+#include <glm/trigonometric.hpp>
 #include <iostream>
 #include <vector>
 
@@ -56,6 +58,12 @@ namespace {
         glm::vec4 sunDirectionRadius;
         glm::vec4 texelBiasFade; // Texel size, comparison bias, fade start, normal offset.
     };
+
+    struct SkyParameters {
+        glm::mat4 inverseViewProjection;
+        glm::vec4 sunDirectionSize; // Normalized direction and tangent of angular half-size.
+        glm::vec4 sunRight; // Orbit axis keeps the disc orientation stable through noon.
+    };
 }
 
 Renderer::Renderer(Device& device, Swapchain& swapchain)
@@ -63,7 +71,8 @@ Renderer::Renderer(Device& device, Swapchain& swapchain)
     const auto pixels = VoxelTextures::BuildAtlas();
     if (device.CreateTexture({
             .width = VoxelTextures::WIDTH, .height = VoxelTextures::HEIGHT,
-            .format = TextureFormat::RGBA8_UNorm,
+            // Atlas bytes are display colors; decode them before lighting.
+            .format = TextureFormat::RGBA8_SRGB,
             .usage = TextureUsage::ShaderResource | TextureUsage::TransferDst,
             .debugName = "VoxelAtlas",
         }, m_VoxelAtlas) != Result::Success ||
@@ -93,7 +102,7 @@ bool Renderer::CreateVoxelPipeline() {
 
     PipelineDesc pipelineDesc{
         .shader = voxelShader.Raw(),
-        .rasterState = { .cullMode = CullMode::None, .fillMode = FillMode::Solid },
+        .rasterState = { .cullMode = CullMode::Front, .fillMode = FillMode::Solid },
         .depthState = { .depthTestEnable = true, .depthWriteEnable = true, .compareOp = CompareOp::Less },
         .renderTargetFormats = { .colorFormats = { m_Swapchain.GetBackBufferFormat() }, .depthFormat = TextureFormat::D32_Float },
         .debugName = "VoxelSolidPipeline",
@@ -248,7 +257,16 @@ struct Renderer::FrameResources {
     RenderGraphResource shadowBuffer;
     RenderGraphResource shadow;
     std::vector<RenderGraphUse> geometry;
+    glm::vec3 sunDirection;
 };
+
+glm::vec3 Renderer::GetSunDirection() const {
+    const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_SunStartTime).count();
+    const float angle = glm::radians(float(360.0 * std::fmod(elapsed, Options::Rendering::SUN_ORBIT_PERIOD_SECONDS)
+        / Options::Rendering::SUN_ORBIT_PERIOD_SECONDS));
+    const glm::vec3 initial = glm::normalize(Options::Rendering::SUN_DIRECTION);
+    return glm::normalize(glm::vec3(glm::rotate(glm::mat4(1), angle, SunOrbitAxis()) * glm::vec4(initial, 0)));
+}
 
 std::vector<RenderGraphUse> Renderer::GetChunkResources(RenderGraph& graph, ChunkCoord player) {
     std::vector<RenderGraphUse> uses;
@@ -270,7 +288,7 @@ std::vector<RenderGraphUse> Renderer::GetChunkResources(RenderGraph& graph, Chun
 void Renderer::AddShadowDataPass(RenderGraph& graph, FrameResources& resources, const glm::mat4& lightViewProjection) {
     const ShadowData shadowData{
         .viewProjection = lightViewProjection,
-        .sunDirectionRadius = glm::vec4(glm::normalize(Options::Rendering::SUN_DIRECTION), Options::Rendering::SHADOW_RADIUS),
+        .sunDirectionRadius = glm::vec4(resources.sunDirection, Options::Rendering::SHADOW_RADIUS),
         .texelBiasFade = {1.0f / Options::Rendering::SHADOW_RESOLUTION, 0.00001f, Options::Rendering::SHADOW_RADIUS * 0.8f, 0.04f},
     };
     resources.shadowBuffer = graph.CreateBuffer({
@@ -385,8 +403,14 @@ void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
 
         const auto projection = camera.GetProjectionMatrix(float(frame.width) / float(frame.height));
         const glm::mat4 skyInverseViewProjection = glm::inverse(projection * glm::mat4(glm::mat3(camera.GetViewMatrix())));
+        const SkyParameters skyParameters{
+            skyInverseViewProjection,
+            glm::vec4(resources.sunDirection,
+                glm::tan(glm::radians(Options::Rendering::SUN_ANGULAR_SIZE_DEGREES * 0.5f))),
+            glm::vec4(SunOrbitAxis(), 0),
+        };
         commands.BindPipeline(m_SkyPipeline.Raw());
-        commands.SetPushConstants(&skyInverseViewProjection, sizeof(skyInverseViewProjection));
+        commands.SetPushConstants(&skyParameters, sizeof(skyParameters));
         commands.Draw(3);
 
         commands.BindPipeline(m_WireframeEnabled ? m_WireframePipeline.Raw() : m_SolidPipeline.Raw());
@@ -437,7 +461,8 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
     RenderGraph graph;
     FrameResources resources;
     const ChunkCoord player = World::ChunkCoordinate(camera.GetPosition());
-    const glm::mat4 lightViewProjection = ShadowViewProjection(camera.GetPosition());
+    resources.sunDirection = GetSunDirection();
+    const glm::mat4 lightViewProjection = ShadowViewProjection(camera.GetPosition(), resources.sunDirection);
     resources.geometry = GetChunkResources(graph, player);
     AddShadowDataPass(graph, resources, lightViewProjection);
     AddShadowPass(graph, resources, lightViewProjection, player);

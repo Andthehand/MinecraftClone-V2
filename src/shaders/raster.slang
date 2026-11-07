@@ -100,16 +100,21 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     StructuredBuffer<ShadowData> shadowData = StructuredBuffer<ShadowData>.Handle(uint2(parameters.shadowDataIndex, 0));
     ShadowData sun = shadowData[0];
     float3 sunDirection = sun.sunDirectionRadius.xyz;
-    const float ambientLight = 0.45f;
-    const float sunIntensity = 0.65f;
-    float sunlight = saturate(dot(normalize(input.normal), sunDirection));
+    // Cool skylight in shadow, with gently warm direct sunlight.
+    float3 ambientLight = lerp(float3(0.025f, 0.035f, 0.060f), float3(0.30f, 0.34f, 0.40f), DaylightAmount(sunDirection));
+    const float3 sunColor = float3(1.00f, 0.94f, 0.82f);
+    const float sunIntensity = 0.80f;
+    float sunlight = saturate(dot(normalize(input.normal), sunDirection)) * smoothstep(0.0f, 0.12f, sunDirection.y);
     float3 toSurface = input.worldPosition - parameters.cameraPositionFogStart.xyz;
     float distance = length(toSurface);
     float visibility = sunlight > 0.0f ? ShadowVisibility(input.worldPosition, input.normal, distance, sun) : 1.0f;
-    float lighting = ambientLight + sunIntensity * sunlight * visibility;
-    float3 litColor = albedo.rgb * lighting * input.occlusion;
+    float3 lighting = ambientLight + sunColor * sunIntensity * sunlight * visibility;
+    // Strengthen contact shading in linear light; open faces stay at full brightness.
+    const float aoContrast = 3.0f;
+    float occlusion = pow(saturate(input.occlusion), aoContrast);
+    float3 litColor = albedo.rgb * lighting * occlusion;
     float fog = smoothstep(parameters.cameraPositionFogStart.w, parameters.fogEnd, distance);
-    float3 fogColor = SkyColor(toSurface / max(distance, 0.0001f));
+    float3 fogColor = SkyColor(toSurface / max(distance, 0.0001f), sunDirection);
     
     return float4(lerp(litColor, fogColor, fog), albedo.a);
 }

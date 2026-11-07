@@ -35,8 +35,8 @@ namespace VoxelTextures {
                     const bool grass = tile == GrassTop ||
                         (tile == GrassSide && y < 3 + ((x * 7 + x / 3) % 3));
                     const bool stone = tile == Stone;
-                    const std::array<int, 3> base = grass ? std::array{83, 143, 48} :
-                        stone ? std::array{128, 130, 133} : std::array{125, 85, 52};
+                    const std::array<int, 3> base = grass ? std::array{82, 146, 58} :
+                        stone ? std::array{128, 130, 133} : std::array{126, 86, 54};
                     const size_t offset = (y * WIDTH + tile * TILE_SIZE + x) * 4;
                     for (size_t channel = 0; channel < 3; ++channel) {
                         pixels[offset + channel] = static_cast<uint8_t>(base[channel] + variation);

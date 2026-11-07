@@ -3,6 +3,7 @@
 #include <RenderGraph/RenderGraph.h>
 #include <RenderGraph/TransientResourcePool.h>
 #include <vector>
+#include <chrono>
 
 #include "Camera.h"
 #include "World.h"
@@ -24,6 +25,7 @@ private:
 	bool CreateSkyPipeline();
 
 	bool UpdateChunks(glm::vec3 position);
+    glm::vec3 GetSunDirection() const;
 
     struct FrameResources;
     std::vector<RenderGraphUse> GetChunkResources(RenderGraph& graph, ChunkCoord player);
@@ -47,6 +49,7 @@ private:
 	Ref<Texture> m_VoxelAtlas;
 	Ref<Sampler> m_VoxelSampler;
 	bool m_WireframeEnabled = false;
+    const std::chrono::steady_clock::time_point m_SunStartTime = std::chrono::steady_clock::now();
 
 	World m_World;
 };

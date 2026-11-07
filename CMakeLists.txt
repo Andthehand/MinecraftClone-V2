@@ -49,12 +49,13 @@ target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(MinecraftClone PRIVATE RealRHI TerrainGenerator)
 
-add_custom_command(TARGET MinecraftClone POST_BUILD
+add_custom_target(MinecraftCloneShaders
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders"
             "$<TARGET_FILE_DIR:MinecraftClone>/shaders"
         COMMENT "Copying MinecraftClone shaders"
     )
+add_dependencies(MinecraftClone MinecraftCloneShaders)
 
 if(MSVC)
     target_compile_options(MinecraftClone PRIVATE /W4 /permissive-)
