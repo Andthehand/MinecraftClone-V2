@@ -117,6 +117,7 @@ int main() {
 			std::cerr << "Failed to acquire a backbuffer.\n";
 			return 1;
 		}
+		camera.SetAspectRatio(float(frame.width) / float(frame.height));
 		if (!renderer.DrawFrame(frame, camera)) {
 			return 1;
 		}

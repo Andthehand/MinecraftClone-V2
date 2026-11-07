@@ -26,10 +26,11 @@ private:
     bool UpdateVoxelShadowVolume(glm::vec3 position);
 
     struct FrameResources;
-    std::vector<RenderGraphUse> GetChunkResources(RenderGraph& graph, ChunkCoord player);
+    void CollectVisibleChunks(RenderGraph& graph, FrameResources& resources, ChunkCoord player,
+        const Camera& camera);
     void AddSunDataPass(RenderGraph& graph, FrameResources& resources);
     void AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
-        const FrameContext& frame, const Camera& camera, ChunkCoord player);
+        const FrameContext& frame, const Camera& camera);
 private:
 	Device& m_Device;
 	Swapchain& m_Swapchain;

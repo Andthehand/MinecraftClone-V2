@@ -208,6 +208,11 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
 }
 
 struct Renderer::FrameResources {
+    struct VisibleChunk {
+        ChunkCoord coord;
+        World::Chunk* chunk;
+    };
+    std::vector<VisibleChunk> visibleChunks;
     RenderGraphResource sunBuffer;
     std::vector<RenderGraphUse> geometry;
     glm::vec3 sunDirection;
@@ -254,21 +259,28 @@ bool Renderer::UpdateVoxelShadowVolume(glm::vec3 position) {
     return true;
 }
 
-std::vector<RenderGraphUse> Renderer::GetChunkResources(RenderGraph& graph, ChunkCoord player) {
-    std::vector<RenderGraphUse> uses;
+void Renderer::CollectVisibleChunks(RenderGraph& graph, FrameResources& resources, ChunkCoord player,
+    const Camera& camera) {
+    const auto planes = camera.GetFrustumPlanes();
+    auto& uses = resources.geometry;
     for (auto& [coord, chunk] : m_World.chunks) {
         if (chunk.indexCount == 0 || chunk.meshDirty || !m_World.CanMeshChunk(coord, player)) {
 			// Not ready to mesh yet, skip...
             continue;
         }
 
+        const glm::vec3 minimum = glm::vec3(coord) * float(Options::World::CHUNK_SIZE);
+        if (!Camera::IsBoxVisible(planes, minimum, minimum + glm::vec3(float(Options::World::CHUNK_SIZE)))) {
+            continue;
+        }
+
+        resources.visibleChunks.push_back({coord, &chunk});
         uses.push_back({graph.ImportBuffer(chunk.vertices.Raw()),
             {PipelineStage::VertexShader, ResourceAccess::ShaderRead}, TextureLayout::Undefined, RenderGraphAccess::Read});
         uses.push_back({graph.ImportBuffer(chunk.indices.Raw()),
             {PipelineStage::VertexInput, ResourceAccess::IndexRead}, TextureLayout::Undefined, RenderGraphAccess::Read});
     }
 
-    return uses;
 }
 
 void Renderer::AddSunDataPass(RenderGraph& graph, FrameResources& resources) {
@@ -298,7 +310,7 @@ void Renderer::AddSunDataPass(RenderGraph& graph, FrameResources& resources) {
 }
 
 void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
-    const FrameContext& frame, const Camera& camera, ChunkCoord player) {
+    const FrameContext& frame, const Camera& camera) {
     const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
     const auto depth = graph.CreateTexture({
         .width = frame.width, .height = frame.height,
@@ -327,7 +339,7 @@ void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
         sampled, TextureLayout::ShaderRead, RenderGraphAccess::Read});
 
     graph.AddPass({.name = "RasterizeVoxels.VoxelRays", .resources = std::move(uses)},
-        [this, &graph, &resources, frame, camera, player, depth](CommandList& commands) {
+        [this, &graph, &resources, frame, camera, depth](CommandList& commands) {
             commands.BeginRendering({
                 .colorAttachments = {{.target = frame.backBufferView, .clearColor = {0.45f, 0.65f, 0.9f, 1.0f}}},
                 .hasDepth = true,
@@ -339,7 +351,7 @@ void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
         commands.SetViewport({.width = float(frame.width), .height = float(frame.height)});
         commands.SetScissor({.width = frame.width, .height = frame.height});
 
-        const auto projection = camera.GetProjectionMatrix(float(frame.width) / float(frame.height));
+        const auto projection = camera.GetProjectionMatrix();
         const glm::mat4 skyInverseViewProjection = glm::inverse(projection * glm::mat4(glm::mat3(camera.GetViewMatrix())));
         const SkyParameters skyParameters{
             skyInverseViewProjection,
@@ -358,7 +370,7 @@ void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
             commands.UseResource(graph.GetBuffer(resources.voxelVolume), ResourceDeclarationScope::Pass);
         }
         VoxelParameters params{
-            .viewProjection = projection * camera.GetViewMatrix(), 
+            .viewProjection = camera.GetViewProjectionMatrix(),
 			.chunkOrigin = glm::vec4(0.0f),     // Will be updated per-chunk below.
             .cameraPositionFogStart = glm::vec4(camera.GetPosition(), Options::Rendering::FOG_START), 
             .fogEnd = Options::Rendering::FOG_END,
@@ -369,14 +381,11 @@ void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
             .voxelShadowIndex = resources.voxelShadows ? graph.GetBuffer(resources.voxelVolume)->GetDescriptorIndex() : 0,
         };
 
-        for (auto& [coord, chunk] : m_World.chunks) {
-            if (chunk.indexCount == 0 || chunk.meshDirty || !m_World.CanMeshChunk(coord, player)) {
-				// Not ready to render yet, skip...
-                continue;
-            }
-
+        for (const auto& [coord, visibleChunk] : resources.visibleChunks) {
+            auto& chunk = *visibleChunk;
             params.chunkOrigin = glm::vec4(glm::vec3(coord) * float(Options::World::CHUNK_SIZE), 0.0f);
             params.vertexBufferIndex = chunk.vertices->GetDescriptorIndex();
+
             commands.SetPushConstants(&params, sizeof(params));
             commands.ClearDrawResourceDeclarations();
             commands.UseResource(chunk.vertices.Raw());
@@ -406,9 +415,9 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
     }
 
     const ChunkCoord player = World::ChunkCoordinate(camera.GetPosition());
-    resources.geometry = GetChunkResources(graph, player);
+    CollectVisibleChunks(graph, resources, player, camera);
     AddSunDataPass(graph, resources);
-    AddVoxelPass(graph, resources, frame, camera, player);
+    AddVoxelPass(graph, resources, frame, camera);
 
     RenderGraphSubmission submission;
     if (graph.Submit(m_Device, submission, m_Pool.get()) != Result::Success) {
