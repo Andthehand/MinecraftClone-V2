@@ -45,10 +45,14 @@ target_link_libraries(TerrainGenerator PUBLIC glm::glm FastNoise)
 
 add_executable(MinecraftClone
     src/main.cpp
+    src/Application.h
+    src/Application.cpp
     src/Camera.h
     src/Camera.cpp
     src/ChunkMesh.h
     src/ChunkMesh.cpp
+    src/FrameCounter.h
+    src/FrameCounter.cpp
     src/Octree.h
     src/Options.h
     src/Renderer.h
