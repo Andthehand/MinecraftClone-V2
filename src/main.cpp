@@ -4,6 +4,7 @@ using namespace RealRHI;
 #include <SDL3/SDL.h>
 
 #include <chrono>
+#include <format>
 #include <iostream>
 #include <print> // required for std::println
 
@@ -70,14 +71,26 @@ int main() {
 	}
 
 	Ref<Swapchain> swapchain;
-	if (device->CreateSwapchain(SwapchainDesc{ .window = window.Raw() }, swapchain) != Result::Success) {
+	if (device->CreateSwapchain(SwapchainDesc{ .window = window.Raw(), .enableVSync = Options::Application::ENABLE_VSYNC }, swapchain) != Result::Success) {
 		std::cerr << "Failed to create swapchain.\n";
 		return 1;
 	}
 
+	// The game owns a single SDL window; keep the counter in its title bar.
+	SDL_Window** sdlWindows = SDL_GetWindows(nullptr);
+	SDL_Window* sdlWindow = sdlWindows ? sdlWindows[0] : nullptr;
+	SDL_free(sdlWindows);
+	if (!sdlWindow) {
+		std::cerr << "Failed to find the game window for the FPS counter.\n";
+		return 1;
+	}
+	SDL_SetWindowTitle(sdlWindow, std::format("{} | -- FPS", Options::Application::NAME).c_str());
+
 	Renderer renderer(*device, *swapchain);
 	Camera camera;
 	auto previousFrameTime = std::chrono::steady_clock::now();
+	auto fpsSampleStart = previousFrameTime;
+	uint64_t fpsFrameCount = 0;
 	bool running = true;
 	while (running) {
 		SDL_Event event;
@@ -112,6 +125,8 @@ int main() {
 		if (!frame.backBufferView) {
 			if (window->IsMinimized() || window->GetWidth() == 0 || window->GetHeight() == 0) {
 				SDL_Delay(Options::Application::MINIMIZED_FRAME_DELAY_MS);
+				fpsSampleStart = std::chrono::steady_clock::now();
+				fpsFrameCount = 0;
 				continue;
 			}
 			std::cerr << "Failed to acquire a backbuffer.\n";
@@ -122,6 +137,15 @@ int main() {
 			return 1;
 		}
 
+		++fpsFrameCount;
+		const auto frameEnd = std::chrono::steady_clock::now();
+		const double fpsElapsed = std::chrono::duration<double>(frameEnd - fpsSampleStart).count();
+		if (fpsElapsed >= 0.5) {
+			const double fps = static_cast<double>(fpsFrameCount) / fpsElapsed;
+			SDL_SetWindowTitle(sdlWindow, std::format("{} | {:.0f} FPS", Options::Application::NAME, fps).c_str());
+			fpsSampleStart = frameEnd;
+			fpsFrameCount = 0;
+		}
 	}
 
 	device->WaitIdle();

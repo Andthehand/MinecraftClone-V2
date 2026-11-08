@@ -79,7 +79,8 @@ namespace Application {
     inline constexpr const char* SHADER_DIRECTORY = "shaders";
     inline constexpr uint32_t WINDOW_WIDTH = 800;
     inline constexpr uint32_t WINDOW_HEIGHT = 600;
-    inline constexpr bool ENABLE_GRAPHICS_DEBUG = true;
+    inline constexpr bool ENABLE_GRAPHICS_DEBUG = false;
+    inline constexpr bool ENABLE_VSYNC = true;
     inline constexpr uint32_t MINIMIZED_FRAME_DELAY_MS = 16;
 }
 }
