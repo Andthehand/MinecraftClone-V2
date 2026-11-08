@@ -12,7 +12,7 @@ Camera::Camera()
 	: m_Position(Options::Camera::START_POSITION)
 	, m_YawRadians(glm::radians(Options::Camera::START_YAW_DEGREES))
 	, m_PitchRadians(glm::radians(Options::Camera::START_PITCH_DEGREES))
-	, m_FovYRadians(glm::radians(Options::Camera::FOV_Y_DEGREES))
+	, m_FovYRadians(glm::radians(Options::Camera::VERTICAL_FOV_DEGREES))
 	, m_AspectRatio(float(Options::Application::WINDOW_WIDTH) / float(Options::Application::WINDOW_HEIGHT)) {
 }
 
@@ -84,7 +84,7 @@ glm::mat4 Camera::GetViewMatrix() const {
 
 glm::mat4 Camera::GetProjectionMatrix() const {
 	auto projection = glm::perspectiveRH_ZO(m_FovYRadians, m_AspectRatio,
-		Options::Rendering::NEAR_PLANE, Options::Rendering::FAR_PLANE);
+		Options::Camera::NEAR_CLIP_DISTANCE, Options::Camera::FAR_CLIP_DISTANCE);
 	// Vulkan uses [0, 1] depth and a positive-height viewport.
 	projection[1][1] *= -1.0f;
 	

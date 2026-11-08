@@ -7,6 +7,7 @@
 #include "Camera.h"
 #include "Sun.h"
 #include "World.h"
+#include "ShadowMaps.h"
 
 using namespace RealRHI;
 
@@ -21,15 +22,16 @@ public:
 private:
 	bool CreateVoxelPipeline();
 	bool CreateSkyPipeline();
+    bool CreateShadowPipeline();
 
 	bool UpdateChunks(glm::vec3 position);
-    bool UpdateVoxelShadowVolume(glm::vec3 position);
 
     struct FrameResources;
     void CollectVisibleChunks(RenderGraph& graph, FrameResources& resources, ChunkCoord player,
         const Camera& camera);
-    void AddSunDataPass(RenderGraph& graph, FrameResources& resources);
-    void AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
+    void BufferDataInitPass(RenderGraph& graph, FrameResources& resources);
+    void AddShadowMapPasses(RenderGraph& graph, FrameResources& resources);
+    void AddVoxelPass(RenderGraph& graph, FrameResources& resources,
         const FrameContext& frame, const Camera& camera);
 private:
 	Device& m_Device;
@@ -39,12 +41,12 @@ private:
 	Ref<Pipeline> m_SolidPipeline;
 	Ref<Pipeline> m_WireframePipeline;
     Ref<Pipeline> m_SkyPipeline;
+	Ref<Pipeline> m_ShadowDepthPipeline;
 
 	Ref<Texture> m_VoxelAtlas;
 	Ref<Sampler> m_VoxelSampler;
+	Ref<Sampler> m_ShadowComparisonSampler;
 	bool m_WireframeEnabled = false;
-    Ref<Buffer> m_VoxelShadowVolume;
-    ChunkCoord m_VoxelShadowCenter{};
     Sun m_Sun;
 
 	World m_World;

@@ -51,8 +51,8 @@ int main() {
 	if (Device::Create(DeviceDesc{
 			.applicationName = Options::Application::NAME,
 			.shaderDirectory = Options::Application::SHADER_DIRECTORY,
-			.enableDebug = Options::Application::ENABLE_DEBUG,
-			.enableValidationLayers = Options::Application::ENABLE_DEBUG,
+			.enableDebug = Options::Application::ENABLE_GRAPHICS_DEBUG,
+			.enableValidationLayers = Options::Application::ENABLE_GRAPHICS_DEBUG,
 			.debugCallback = CaptureDebugMessage,
 		}, device) != Result::Success) {
 		std::cerr << "Failed to create device.\n";
@@ -104,14 +104,14 @@ int main() {
 		const float yawInput = (keyboard[SDL_SCANCODE_RIGHT] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_LEFT] ? 1.0f : 0.0f);
 		const float pitchInput = (keyboard[SDL_SCANCODE_UP] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_DOWN] ? 1.0f : 0.0f);
 
-		constexpr float MOVE_SPEED = Options::Camera::MOVE_SPEED;
-		camera.MoveLocal(moveForward * MOVE_SPEED * deltaTime, moveRight * MOVE_SPEED * deltaTime, moveUp * MOVE_SPEED * deltaTime);
-		camera.AddYawPitch(yawInput * Options::Camera::TURN_SPEED * deltaTime, pitchInput * Options::Camera::TURN_SPEED * deltaTime);
+		constexpr float MOVE_SPEED_UNITS_PER_SECOND = Options::Camera::MOVE_SPEED_UNITS_PER_SECOND;
+		camera.MoveLocal(moveForward * MOVE_SPEED_UNITS_PER_SECOND * deltaTime, moveRight * MOVE_SPEED_UNITS_PER_SECOND * deltaTime, moveUp * MOVE_SPEED_UNITS_PER_SECOND * deltaTime);
+		camera.AddYawPitch(yawInput * Options::Camera::TURN_SPEED_RADIANS_PER_SECOND * deltaTime, pitchInput * Options::Camera::TURN_SPEED_RADIANS_PER_SECOND * deltaTime);
 
 		const FrameContext frame = swapchain->BeginFrame();
 		if (!frame.backBufferView) {
 			if (window->IsMinimized() || window->GetWidth() == 0 || window->GetHeight() == 0) {
-				SDL_Delay(Options::Application::MINIMIZED_DELAY_MS);
+				SDL_Delay(Options::Application::MINIMIZED_FRAME_DELAY_MS);
 				continue;
 			}
 			std::cerr << "Failed to acquire a backbuffer.\n";

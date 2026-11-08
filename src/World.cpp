@@ -25,7 +25,7 @@ ChunkMeshNeighbors World::GetChunkNeighbors(ChunkCoord coord) const {
 }
 
 bool World::CanMeshChunk(ChunkCoord coord, ChunkCoord player) const {
-    if (Distance(coord, player) > Options::World::MESH_RADIUS || !chunks.contains(coord))
+    if (Distance(coord, player) > Options::World::MESH_RADIUS_CHUNKS || !chunks.contains(coord))
         return false;
     const auto neighbors = GetChunkNeighbors(coord);
     for (size_t i = 0; i < neighbors.size(); ++i)

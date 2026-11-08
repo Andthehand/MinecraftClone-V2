@@ -1,14 +1,15 @@
 #include "Renderer.h"
 #include "ChunkMesh.h"
 #include "VoxelTextures.h"
-#include "VoxelShadowVolume.h"
 
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <type_traits>
 #include <glm/vec4.hpp>
 #include <glm/matrix.hpp>
 #include <iostream>
+#include <string>
 #include <vector>
 
 namespace {
@@ -16,7 +17,7 @@ namespace {
     const std::vector<ChunkCoord>& GetChunkLoadOffsets() {
         static const std::vector<ChunkCoord> offsets = [] {
             std::vector<ChunkCoord> result;
-            constexpr int radius = Options::World::LOAD_RADIUS;
+            constexpr int radius = Options::World::LOAD_RADIUS_CHUNKS;
             for (int z = -radius; z <= radius; ++z) {
                 for (int y = -radius; y <= radius; ++y) {
                     for (int x = -radius; x <= radius; ++x) {
@@ -42,13 +43,15 @@ namespace {
         uint32_t samplerIndex;
         uint32_t vertexBufferIndex;
         uint32_t sunDataIndex;
-        uint32_t voxelShadowIndex;
     };
 
-    struct SunData {
+    struct alignas(16) SunData {
         glm::vec4 sunDirection;
-        glm::vec4 raySettings; // Local radius, blend start, ray length, enabled.
+        uint32_t shadowDataIndex;
+		glm::vec3 padding; // std430 rounds the structure stride to 16-byte alignment.
     };
+    static_assert(offsetof(SunData, shadowDataIndex) == 16);
+    static_assert(sizeof(SunData) == 32); // Match the shader's std430 structure stride.
 
     struct SkyParameters {
         glm::mat4 inverseViewProjection;
@@ -76,17 +79,20 @@ Renderer::Renderer(Device& device, Swapchain& swapchain)
         std::cerr << "Failed to create voxel textures.\n";
         return;
     }
-    if (!CreateVoxelPipeline() || !CreateSkyPipeline()) {
+    if (!CreateVoxelPipeline() || !CreateSkyPipeline() || !CreateShadowPipeline()) {
         return;
     }
 
-    m_Pool = std::make_unique<TransientResourcePool>(device, Options::Rendering::TRANSIENT_POOL_BYTES);
+    m_Pool = std::make_unique<TransientResourcePool>(device, Options::Rendering::TRANSIENT_RESOURCE_POOL_BYTES);
 }
 
 bool Renderer::CreateVoxelPipeline() {
     Ref<Shader> voxelShader;
-    if (m_Device.CreateShader({ .moduleName = Options::Rendering::SHADER_MODULE,
-                            .debugName = "VoxelRasterShader" }, voxelShader) != Result::Success) {
+	const ShaderDesc shaderDesc{
+		.moduleName = Options::Rendering::TERRAIN_SHADER_MODULE,
+		.debugName = "VoxelRasterShader",
+	};
+    if (m_Device.CreateShader(shaderDesc, voxelShader) != Result::Success) {
         std::cerr << "Failed to create voxel raster voxelShader.\n";
         return false;
     }
@@ -112,10 +118,50 @@ bool Renderer::CreateVoxelPipeline() {
     return true;
 }
 
+bool Renderer::CreateShadowPipeline() {
+    Ref<Shader> depthShader;
+	constexpr ShaderDesc shaderDesc{
+		.moduleName = Options::Rendering::SHADOW_SHADER_MODULE,
+		.debugName = "ShadowDepthShader",
+	};
+	if (m_Device.CreateShader(shaderDesc, depthShader) != Result::Success) {
+		std::cerr << "Failed to create shadow depth voxelShader.\n";
+		return false;
+	}
+
+	const PipelineDesc pipelineDesc{
+		.shader = depthShader.Raw(),
+		.rasterState = { .cullMode = CullMode::Front },
+		.depthState = { .depthTestEnable = true, .depthWriteEnable = true, .compareOp = CompareOp::Less },
+		.renderTargetFormats = { .depthFormat = TextureFormat::D32_Float },
+		.debugName = "ShadowDepthPipeline",
+	};
+	if (m_Device.CreateGraphicsPipeline(pipelineDesc, m_ShadowDepthPipeline) != Result::Success) {
+		std::cerr << "Failed to create shadow depth pipeline.\n";
+		return false;
+	}
+
+	constexpr SamplerDesc samplerDesc{
+		.minFilter = Filter::Nearest, .magFilter = Filter::Nearest, .mipFilter = Filter::Nearest,
+		.addressU = SamplerAddressMode::ClampToBorder, .addressV = SamplerAddressMode::ClampToBorder,
+		.compareEnable = true, .compareOp = CompareOp::LessEqual, .borderColor = SamplerBorderColor::OpaqueWhite,
+		.debugName = "ShadowComparisonSampler",
+	};
+	if (m_Device.CreateSampler(samplerDesc, m_ShadowComparisonSampler) != Result::Success) {
+		std::cerr << "Failed to create shadow comparison sampler.\n";
+		return false;
+	}
+
+	return true;
+}
+
 bool Renderer::CreateSkyPipeline() {
     Ref<Shader> skyShader;
-    if (m_Device.CreateShader({ .moduleName = Options::Rendering::SKY_SHADER_MODULE,
-                            .debugName = "SkyShader" }, skyShader) != Result::Success) {
+    constexpr ShaderDesc shaderDesc{
+		.moduleName = Options::Rendering::SKY_SHADER_MODULE,
+		.debugName = "SkyShader",
+	};
+    if (m_Device.CreateShader(shaderDesc, skyShader) != Result::Success) {
         std::cerr << "Failed to create sky voxelShader.\n";
         return false;
     }
@@ -138,7 +184,7 @@ bool Renderer::CreateSkyPipeline() {
 bool Renderer::UpdateChunks(glm::vec3 position) {
     const ChunkCoord player = World::ChunkCoordinate(position);
     for (auto it = m_World.chunks.begin(); it != m_World.chunks.end();) {
-        if (World::Distance(it->first, player) > Options::World::UNLOAD_RADIUS) {
+        if (World::Distance(it->first, player) > Options::World::UNLOAD_RADIUS_CHUNKS) {
             // Render graph resource uses retain the buffers until GPU completion.
             it = m_World.chunks.erase(it);
         }
@@ -149,7 +195,7 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
 
     uint32_t loaded = 0;
     for (const auto offset : GetChunkLoadOffsets()) {
-        if (loaded == Options::World::CHUNKS_LOADED_PER_FRAME) {
+        if (loaded == Options::World::MAX_CHUNKS_GENERATED_PER_FRAME) {
             break;
         }
 
@@ -212,104 +258,187 @@ struct Renderer::FrameResources {
         ChunkCoord coord;
         World::Chunk* chunk;
     };
+    struct ShadowVisibleChunk {
+        ChunkCoord coord;
+        World::Chunk* chunk;
+        uint32_t cascadeMask; // Bit i marks visibility in cascade i.
+    };
     std::vector<VisibleChunk> visibleChunks;
+    std::vector<ShadowVisibleChunk> shadowVisibleChunks;
+    std::vector<RenderGraphUse> geometryResourceUses;
+
     RenderGraphResource sunBuffer;
-    std::vector<RenderGraphUse> geometry;
     glm::vec3 sunDirection;
-    RenderGraphResource voxelVolume;
-    bool voxelShadows = false;
+
+    ShadowMaps::SceneData shadowMapData;
+    RenderGraphResource shadowTexture;
+	RenderGraphResource shadowDataBuffer;
+    Ref<TextureView> sampledShadowView;
+    std::array<Ref<TextureView>, 3> shadowDepthViews;
 };
-
-bool Renderer::UpdateVoxelShadowVolume(glm::vec3 position) {
-    const ChunkCoord center = World::ChunkCoordinate(position);
-    if (m_VoxelShadowVolume && center == m_VoxelShadowCenter) {
-		// Voxel shadow volume is already up-to-date for the current player position, no need to rebuild.
-        return true;
-    }
-
-    const auto current = m_World.chunks.find(center);
-    if (current == m_World.chunks.end()) {
-		// The center chunk is not loaded yet, so we cannot build a shadow volume.
-        return true;
-    }
-
-    auto currentChunkNeighbors = m_World.GetChunkNeighbors(center);
-    currentChunkNeighbors[ChunkNeighborIndex(0, 0, 0)] = &current->second.octree;
-    for (const auto* chunk : currentChunkNeighbors) {
-        if (!chunk) {
-			// Not all neighbors are loaded yet, so we cannot build a shadow volume.
-            return true;
-        }
-    }
-
-    const auto shadowVolume = VoxelShadows::VoxelShadowVolume::Build(currentChunkNeighbors, (center - ChunkCoord(1)) * int(Options::World::CHUNK_SIZE));
-    const auto uploadData = shadowVolume.GetUploadData();
-    Ref<Buffer> volume;
-    if (m_Device.CreateBuffer({.size = uploadData.size_bytes(), .usage = BufferUsage::Storage,
-            .memoryUsage = MemoryUsage::CPUToGPU, .initialData = uploadData.data(),
-            .debugName = "LocalVoxelShadowOccupancy"}, volume) != Result::Success) {
-        std::cerr << "Failed to upload voxel shadow occupancy.\n";
-        return false;
-    }
-
-    // Immutable snapshots remain retained by in-flight graph submissions.
-    m_VoxelShadowVolume = std::move(volume);
-    m_VoxelShadowCenter = center;
-
-    return true;
-}
 
 void Renderer::CollectVisibleChunks(RenderGraph& graph, FrameResources& resources, ChunkCoord player,
     const Camera& camera) {
     const auto planes = camera.GetFrustumPlanes();
-    auto& uses = resources.geometry;
+
+	// Since we are doing 3 cascaded shadow maps, we need to check visibility against the light frustum as well.
+    std::array<std::array<glm::vec4, 6>, 3> lightPlanes;
+    for (uint32_t cascade = 0; cascade < lightPlanes.size(); ++cascade) {
+        lightPlanes[cascade] = ShadowMaps::MatrixPlanes(resources.shadowMapData.lightMatrices[cascade]);
+    }
+
+    auto& uses = resources.geometryResourceUses;
     for (auto& [coord, chunk] : m_World.chunks) {
         if (chunk.indexCount == 0 || chunk.meshDirty || !m_World.CanMeshChunk(coord, player)) {
-			// Not ready to mesh yet, skip...
             continue;
         }
 
-        const glm::vec3 minimum = glm::vec3(coord) * float(Options::World::CHUNK_SIZE);
-        if (!Camera::IsBoxVisible(planes, minimum, minimum + glm::vec3(float(Options::World::CHUNK_SIZE)))) {
+        const glm::vec3 chunkMinimum = glm::vec3(coord) * float(Options::World::CHUNK_SIZE);
+        const auto chunkMaximum = chunkMinimum + glm::vec3(float(Options::World::CHUNK_SIZE));
+
+        const bool cameraVisible = Camera::IsBoxVisible(planes, chunkMinimum, chunkMaximum);
+        
+        uint32_t cascadeMask = 0;
+        for (uint32_t cascade = 0; cascade < lightPlanes.size(); ++cascade) {
+            if (Camera::IsBoxVisible(lightPlanes[cascade], chunkMinimum, chunkMaximum)) {
+                cascadeMask |= 1u << cascade;
+            }
+        }
+
+        if (!cameraVisible && cascadeMask == 0) {
+			// Not visible to camera or any shadow cascade, skip...
             continue;
         }
 
-        resources.visibleChunks.push_back({coord, &chunk});
+        if (cameraVisible) {
+            resources.visibleChunks.push_back({ coord, &chunk });
+        }
+        if (cascadeMask != 0) {
+            resources.shadowVisibleChunks.push_back({ coord, &chunk, cascadeMask });
+        }
+
         uses.push_back({graph.ImportBuffer(chunk.vertices.Raw()),
             {PipelineStage::VertexShader, ResourceAccess::ShaderRead}, TextureLayout::Undefined, RenderGraphAccess::Read});
         uses.push_back({graph.ImportBuffer(chunk.indices.Raw()),
             {PipelineStage::VertexInput, ResourceAccess::IndexRead}, TextureLayout::Undefined, RenderGraphAccess::Read});
     }
 
+    // Near chunks populate depth first, reducing shading of hidden surfaces.
+    const glm::vec3 cameraPosition = camera.GetPosition();
+    const auto distanceSquared = [cameraPosition](ChunkCoord coord) {
+        const glm::vec3 center = (glm::vec3(coord) + glm::vec3(0.5f)) * float(Options::World::CHUNK_SIZE);
+        const glm::vec3 delta = center - cameraPosition;
+        return glm::dot(delta, delta);
+    };
+    std::sort(resources.visibleChunks.begin(), resources.visibleChunks.end(),
+        [&distanceSquared](const auto& a, const auto& b) {
+            return distanceSquared(a.coord) < distanceSquared(b.coord);
+        }
+    );
 }
 
-void Renderer::AddSunDataPass(RenderGraph& graph, FrameResources& resources) {
-    const SunData sunData{
-        .sunDirection = glm::vec4(resources.sunDirection, 0),
-        .raySettings = {Options::Rendering::VOXEL_SHADOW_FADE_END_DISTANCE, Options::Rendering::VOXEL_SHADOW_FADE_START_DISTANCE,
-            Options::Rendering::VOXEL_SHADOW_MAX_RAY_LENGTH, resources.voxelShadows ? 1.0f : 0.0f},
-    };
+void Renderer::BufferDataInitPass(RenderGraph& graph, FrameResources& resources) {
+    const SunData sunData{.sunDirection = glm::vec4(resources.sunDirection, 0)};
     resources.sunBuffer = graph.CreateBuffer({
         .size = sizeof(SunData), .usage = BufferUsage::Storage,
         .memoryUsage = MemoryUsage::CPUToGPU,
         .debugName = "SunLightingData",
     });
 
+	constexpr ResourceState sunDataWrite{ PipelineStage::AllCommands, ResourceAccess::MemoryWrite };    
     graph.AddPass({
-        .name = "InitializeSunData",
-        .resources = {{resources.sunBuffer, {PipelineStage::AllCommands, ResourceAccess::MemoryWrite},
-                        TextureLayout::Undefined, RenderGraphAccess::Write},
+        .name = "InitializeBufferData",
+        .resources = {{resources.sunBuffer, sunDataWrite, TextureLayout::Undefined, RenderGraphAccess::Write},
     }}, [&graph, &resources, sunData](CommandList& commands) {
         auto* buffer = graph.GetBuffer(resources.sunBuffer);
         commands.UseResource(buffer);
 
-        if (buffer->WriteData(&sunData, sizeof(sunData)) != Result::Success) {
+        auto data = sunData;
+        data.shadowDataIndex = graph.GetBuffer(resources.shadowDataBuffer)->GetDescriptorIndex();
+        if (buffer->WriteData(&data, sizeof(data)) != Result::Success) {
             std::cerr << "Failed to write sun lighting data.\n";
         }
     });
 }
 
-void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
+void Renderer::AddShadowMapPasses(RenderGraph& graph, FrameResources& resources) {
+    constexpr uint32_t layers = 3;
+    constexpr uint32_t resolution = Options::Rendering::SHADOW_MAP_RESOLUTION;
+
+    resources.shadowTexture = graph.CreateTexture({
+        .width = resolution, .height = resolution, .arrayLayers = layers,
+        .format = TextureFormat::D32_Float, .usage = TextureUsage::DepthStencil | TextureUsage::ShaderResource,
+        .debugName = "DirectionalShadowMaps"
+    });
+    resources.shadowDataBuffer = graph.CreateBuffer({
+        .size = sizeof(ShadowMaps::SceneData), 
+        .usage = BufferUsage::Storage, .memoryUsage = MemoryUsage::CPUToGPU, 
+        .debugName = "DirectionalShadowData"
+    });
+
+	constexpr ResourceState shadowDataWrite{ PipelineStage::AllCommands, ResourceAccess::MemoryWrite };
+    graph.AddPass({.name = "InitializeShadowMaps", 
+        .resources = {{resources.shadowDataBuffer, shadowDataWrite, TextureLayout::Undefined, RenderGraphAccess::Write}}},
+        [this, &graph, &resources, layers](CommandList&) {
+            auto* texture = graph.GetTexture(resources.shadowTexture);
+            if (m_Device.CreateTextureView(texture, { .type = TextureViewType::View2DArray, .arrayLayerCount = layers,
+                .usage = TextureUsage::ShaderResource }, resources.sampledShadowView) != Result::Success) {
+                std::cerr << "Could not create sampled shadow view.\n";
+                return;
+            }
+            
+            for (uint32_t i = 0; i < layers; ++i) {
+                if (m_Device.CreateTextureView(texture, { .baseArrayLayer = i, .usage = TextureUsage::DepthStencil }, resources.shadowDepthViews[i]) != Result::Success) {
+                    std::cerr << "Could not create shadow depth view.\n";
+                    return;
+                }
+            }
+
+            auto data = resources.shadowMapData;
+            data.indices = {resources.sampledShadowView->GetSampledImageDescriptorIndex(), m_ShadowComparisonSampler->GetDescriptorIndex(), 0u, 0u};
+            if (graph.GetBuffer(resources.shadowDataBuffer)->WriteData(&data, sizeof(data)) != Result::Success) {
+                std::cerr << "Could not upload shadow parameters.\n";
+            }
+        });
+
+    auto uses = resources.geometryResourceUses;
+	constexpr ResourceState shadowTextureWrite{ PipelineStage::EarlyFragmentTests | PipelineStage::LateFragmentTests,
+		                                        ResourceAccess::DepthStencilRead | ResourceAccess::DepthStencilWrite };
+	constexpr ResourceState shadowDataRead{ PipelineStage::VertexShader, ResourceAccess::ShaderRead };
+    uses.push_back({resources.shadowTexture, shadowTextureWrite, TextureLayout::DepthStencilAttachment, RenderGraphAccess::Write});
+    uses.push_back({resources.shadowDataBuffer, shadowDataRead, TextureLayout::Undefined, RenderGraphAccess::Read});
+    graph.AddPass({.name = "RenderDirectionalShadowMaps", .resources = std::move(uses)},
+        [this, &resources, layers](CommandList& commands) {
+            for (uint32_t cascade = 0; cascade < layers; ++cascade) {
+				commands.BeginDebugLabel(("ShadowMapCascade: " + std::to_string(cascade)).c_str());
+                commands.BeginRendering({
+                    .hasDepth = true, .depthAttachment = {.target = resources.shadowDepthViews[cascade].Raw()},
+                    .renderArea = {.width = resolution, .height = resolution}
+                });
+
+				// Set dynamic states
+                commands.SetViewport({.width = float(resolution), .height = float(resolution)});
+                commands.SetScissor({.width = resolution, .height = resolution});
+
+                commands.BindPipeline(m_ShadowDepthPipeline.Raw());
+                for (const auto& caster : resources.shadowVisibleChunks) {
+                    if ((caster.cascadeMask & (1u << cascade)) == 0) continue;
+                    const glm::vec3 minimum = glm::vec3(caster.coord) * float(Options::World::CHUNK_SIZE);
+                    struct DepthParameters { glm::mat4 viewProjection; glm::vec4 origin; uint32_t vertices; };
+                    const DepthParameters push{resources.shadowMapData.lightMatrices[cascade], glm::vec4(minimum, 0), caster.chunk->vertices->GetDescriptorIndex()};
+                    
+                    commands.ClearDrawResourceDeclarations(); commands.UseResource(caster.chunk->vertices.Raw());
+                    commands.SetPushConstants(&push, sizeof(push)); commands.BindIndexBuffer(caster.chunk->indices.Raw());
+                    commands.DrawIndexed(caster.chunk->indexCount);
+                }
+
+                commands.EndRendering();
+                commands.EndDebugLabel();
+            }
+        });
+}
+
+void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
     const FrameContext& frame, const Camera& camera) {
     const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
     const auto depth = graph.CreateTexture({
@@ -328,17 +457,16 @@ void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
     constexpr ResourceState sampled{ PipelineStage::FragmentShader, ResourceAccess::ShaderRead };
 
 	// Track all resources used in the voxel pass, including geometry and shadow data.
-    auto uses = resources.geometry;
+    auto uses = resources.geometryResourceUses;
     uses.push_back({backbuffer, backbufferWrite, TextureLayout::ColorAttachment, RenderGraphAccess::Write});
     uses.push_back({depth, depthWrite, TextureLayout::DepthStencilAttachment, RenderGraphAccess::Write});
     uses.push_back({resources.sunBuffer, sampled, TextureLayout::Undefined, RenderGraphAccess::Read});
-    if (resources.voxelShadows) {
-        uses.push_back({ resources.voxelVolume, sampled, TextureLayout::Undefined, RenderGraphAccess::Read });
-    }
+    uses.push_back({resources.shadowTexture, sampled, TextureLayout::ShaderRead, RenderGraphAccess::Read});
+    uses.push_back({resources.shadowDataBuffer, sampled, TextureLayout::Undefined, RenderGraphAccess::Read});
     uses.push_back({graph.ImportTexture(m_VoxelAtlas.Raw(), TextureLayout::ShaderRead, sampled),
         sampled, TextureLayout::ShaderRead, RenderGraphAccess::Read});
 
-    graph.AddPass({.name = "RasterizeVoxels.VoxelRays", .resources = std::move(uses)},
+    graph.AddPass({.name = "RasterizeVoxels.CSM3", .resources = std::move(uses)},
         [this, &graph, &resources, frame, camera, depth](CommandList& commands) {
             commands.BeginRendering({
                 .colorAttachments = {{.target = frame.backBufferView, .clearColor = {0.45f, 0.65f, 0.9f, 1.0f}}},
@@ -366,19 +494,18 @@ void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
         commands.UseResource(m_VoxelAtlas.Raw(), ResourceDeclarationScope::Pass);
         commands.UseResource(graph.GetBuffer(resources.sunBuffer), ResourceDeclarationScope::Pass);
         commands.UseResource(m_VoxelSampler.Raw());
-        if (resources.voxelShadows) {
-            commands.UseResource(graph.GetBuffer(resources.voxelVolume), ResourceDeclarationScope::Pass);
-        }
+        commands.UseResource(resources.sampledShadowView.Raw(), ResourceDeclarationScope::Pass);
+        commands.UseResource(graph.GetBuffer(resources.shadowDataBuffer), ResourceDeclarationScope::Pass);
+        commands.UseResource(m_ShadowComparisonSampler.Raw());
         VoxelParameters params{
             .viewProjection = camera.GetViewProjectionMatrix(),
 			.chunkOrigin = glm::vec4(0.0f),     // Will be updated per-chunk below.
-            .cameraPositionFogStart = glm::vec4(camera.GetPosition(), Options::Rendering::FOG_START), 
-            .fogEnd = Options::Rendering::FOG_END,
+            .cameraPositionFogStart = glm::vec4(camera.GetPosition(), Options::Rendering::FOG_START_DISTANCE),
+            .fogEnd = Options::Rendering::FOG_END_DISTANCE,
             .textureIndex = m_VoxelAtlas->GetSampledImageDescriptorIndex(),
             .samplerIndex = m_VoxelSampler->GetDescriptorIndex(),
 			.vertexBufferIndex = 0,             // Will be updated per-chunk below.
             .sunDataIndex = graph.GetBuffer(resources.sunBuffer)->GetDescriptorIndex(),
-            .voxelShadowIndex = resources.voxelShadows ? graph.GetBuffer(resources.voxelVolume)->GetDescriptorIndex() : 0,
         };
 
         for (const auto& [coord, visibleChunk] : resources.visibleChunks) {
@@ -399,24 +526,20 @@ void Renderer::AddVoxelPass(RenderGraph& graph, const FrameResources& resources,
 }
 
 bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
-    if (!UpdateChunks(camera.GetPosition()) || 
-        !UpdateVoxelShadowVolume(camera.GetPosition())) {
+    if (!UpdateChunks(camera.GetPosition())) {
         return false;
     }
 
     RenderGraph graph;
     FrameResources resources {
         .sunDirection = m_Sun.GetDirection(),
-        .voxelShadows = bool(m_VoxelShadowVolume),
     };
     
-    if (resources.voxelShadows) {
-        resources.voxelVolume = graph.ImportBuffer(m_VoxelShadowVolume.Raw());
-    }
-
     const ChunkCoord player = World::ChunkCoordinate(camera.GetPosition());
+    resources.shadowMapData = ShadowMaps::BuildData(camera, resources.sunDirection, frame.width, frame.height);
     CollectVisibleChunks(graph, resources, player, camera);
-    AddSunDataPass(graph, resources);
+    AddShadowMapPasses(graph, resources);
+    BufferDataInitPass(graph, resources);
     AddVoxelPass(graph, resources, frame, camera);
 
     RenderGraphSubmission submission;

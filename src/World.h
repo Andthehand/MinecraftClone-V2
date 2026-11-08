@@ -34,7 +34,7 @@ public:
     void Generate(Octree& octree, ChunkCoord coord) const;
 public:
     struct Chunk {
-        Octree octree{ Options::World::OCTREE_DEPTH };
+        Octree octree{ Options::World::CHUNK_OCTREE_DEPTH };
         RealRHI::Ref<RealRHI::Buffer> vertices;
         RealRHI::Ref<RealRHI::Buffer> indices;
         uint32_t indexCount = 0;

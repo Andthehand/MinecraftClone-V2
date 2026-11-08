@@ -1,6 +1,5 @@
 #include "Octree.h"
 #include <algorithm>
-#include <stdexcept>
 
 Octree::Octree(uint32_t depth) 
 	: m_Depth(depth), m_SideLength(std::uint32_t{ 1 } << depth) {}

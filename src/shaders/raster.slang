@@ -1,5 +1,7 @@
 #include "atmosphere.slang"
-#include "voxel_shadow.slang"
+#include "shadow_maps.slang"
+
+static const float SHADOW_CLEAR = 1.0f;
 
 // Matches VoxelParameters in Renderer.cpp; field order is part of the upload layout.
 struct VoxelParameters {
@@ -11,17 +13,13 @@ struct VoxelParameters {
     uint samplerIndex;
     uint vertexBufferIndex;
     uint sunDataIndex;
-    uint voxelShadowIndex;
 };
 [[vk::push_constant]] ConstantBuffer<VoxelParameters> parameters;
 
-// Matches the CPU SunData's direction followed by the four raySettings components.
+// Matches the CPU SunData upload: direction at byte 0, shadow-data index at byte 16.
 struct SunData {
     float4 sunDirection;
-    float shadowFadeEndDistance;
-    float shadowFadeStartDistance;
-    float shadowMaxRayLength;
-    float shadowVolumeAvailable;
+    uint shadowDataIndex;
 };
 
 struct VoxelVertex {
@@ -89,19 +87,16 @@ float4 SampleVoxelAlbedo(float2 uv, uint tile) {
 
 [require(spvDescriptorHeapEXT)]
 float CalculateSunVisibility(SunData sun, float3 worldPosition, float3 normal, float cameraDistance) {
-    float shadowFade = smoothstep(sun.shadowFadeStartDistance, sun.shadowFadeEndDistance, cameraDistance);
-    if (sun.shadowVolumeAvailable <= 0.5f || shadowFade >= 1.0f) {
+    StructuredBuffer<SceneData> buffer = StructuredBuffer<SceneData>.Handle(uint2(sun.shadowDataIndex, 0));
+    SceneData data = buffer[0];
+    if (cameraDistance >= data.settings.w) {
         return SHADOW_CLEAR;
     }
-
-    float tracedVisibility = TraceVoxelSun(
-        parameters.voxelShadowIndex, worldPosition, normal, sun.sunDirection.xyz, sun.shadowMaxRayLength
-    );
-    // Outside known coverage, keep direct sunlight instead of inventing a blocker.
-    if (tracedVisibility < 0.0f) {
-        return SHADOW_CLEAR;
-    }
-    return lerp(tracedVisibility, SHADOW_CLEAR, shadowFade);
+    
+    float viewDepth = -TransformSceneMatrix(sun.shadowDataIndex, 0u, float4(worldPosition, 1.0f)).z;
+    float visibility = CascadeVisibility(sun.shadowDataIndex, data, worldPosition, normal, viewDepth);
+    
+    return lerp(visibility, SHADOW_CLEAR, smoothstep(data.settings.z, data.settings.w, cameraDistance));
 }
 
 [require(spvDescriptorHeapEXT)]

@@ -55,8 +55,7 @@ add_executable(MinecraftClone
     src/Renderer.cpp
     src/Sun.h
     src/Sun.cpp
-    src/VoxelShadowVolume.h
-    src/VoxelShadowVolume.cpp
+    src/ShadowMaps.h
     src/VoxelTextures.h
     src/World.h
     src/World.cpp
