@@ -17,25 +17,29 @@ float MapVisibility(uint sceneIndex, SceneData data, float3 worldPosition, float
     
     ByteAddressBuffer rawScene = ByteAddressBuffer.Handle(uint2(sceneIndex, 0));
     float2 depthGradient = asfloat(rawScene.Load2(304u + (cascade * 6u + face) * 16u));
-    float2 texelCenter = (floor(uv / data.settings.y) + 0.5f) * data.settings.y;
+    // Hardware PCF shares one reference depth across its four texels. Cover the
+    // receiver-plane variation within that bilinear footprint as well as the base bias.
+    // A contributing texel center can be up to one texel away on either axis.
+    float depthBias = data.settings.x
+        + data.settings.y * (abs(depthGradient.x) + abs(depthGradient.y));
 
     Texture2DArray<float> shadow = Texture2DArray<float>.Handle(uint2(data.indices.x, 0));
     SamplerComparisonState sampler = SamplerComparisonState.Handle(uint2(data.indices.y, 0));
     
     float visibility = 0.0f;
-    [unroll] for (int y = -1; y <= 1; ++y) {
-        [unroll] for (int x = -1; x <= 1; ++x) {
-            float2 sampleUV = texelCenter + float2(x, y) * data.settings.y;
-            // Compare against the receiver plane at the actual sampled texel center.
-            // A large constant/slope bias instead detaches contact shadows and loses thin casters.
-            float referenceDepth = projected.z + dot(depthGradient, sampleUV - uv) - data.settings.x;
+    // GPU Gems chapter 11: sixteen bilinear comparison taps at offsets
+    // -1.5, -0.5, 0.5, 1.5. Keep the footprint continuous instead of snapping to texels.
+    [unroll] for (int y = 0; y < 4; ++y) {
+        [unroll] for (int x = 0; x < 4; ++x) {
+            float2 offsetUV = (float2(x, y) - 1.5f) * data.settings.y;
+            float2 sampleUV = uv + offsetUV;
+            float referenceDepth = projected.z + dot(depthGradient, offsetUV) - depthBias;
             
             visibility += shadow.SampleCmpLevelZero(sampler, float3(sampleUV, float(cascade)), referenceDepth);
         }
     }
 
-    // Average the 3x3 samples to reduce aliasing and provide a smooth transition between cascades.
-    return visibility / 9.0f;
+    return visibility / 16.0f;
 }
 
 [require(spvDescriptorHeapEXT)]

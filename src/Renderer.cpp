@@ -120,7 +120,7 @@ bool Renderer::CreateVoxelPipeline() {
 
 bool Renderer::CreateShadowPipeline() {
     Ref<Shader> depthShader;
-	constexpr ShaderDesc shaderDesc{
+	const ShaderDesc shaderDesc{
 		.moduleName = Options::Rendering::SHADOW_SHADER_MODULE,
 		.debugName = "ShadowDepthShader",
 	};
@@ -142,7 +142,8 @@ bool Renderer::CreateShadowPipeline() {
 	}
 
 	constexpr SamplerDesc samplerDesc{
-		.minFilter = Filter::Nearest, .magFilter = Filter::Nearest, .mipFilter = Filter::Nearest,
+		// Bilinearly filter depth comparisons for each PCF tap, not the stored depths.
+		.minFilter = Filter::Linear, .magFilter = Filter::Linear, .mipFilter = Filter::Nearest,
 		.addressU = SamplerAddressMode::ClampToBorder, .addressV = SamplerAddressMode::ClampToBorder,
 		.compareEnable = true, .compareOp = CompareOp::LessEqual, .borderColor = SamplerBorderColor::OpaqueWhite,
 		.debugName = "ShadowComparisonSampler",
@@ -157,7 +158,7 @@ bool Renderer::CreateShadowPipeline() {
 
 bool Renderer::CreateSkyPipeline() {
     Ref<Shader> skyShader;
-    constexpr ShaderDesc shaderDesc{
+    const ShaderDesc shaderDesc{
 		.moduleName = Options::Rendering::SKY_SHADER_MODULE,
 		.debugName = "SkyShader",
 	};
@@ -427,7 +428,7 @@ void Renderer::AddShadowMapPasses(RenderGraph& graph, FrameResources& resources)
                     struct DepthParameters { glm::mat4 viewProjection; glm::vec4 origin; uint32_t vertices; };
                     const DepthParameters push{resources.shadowMapData.lightMatrices[cascade], glm::vec4(minimum, 0), caster.chunk->vertices->GetDescriptorIndex()};
                     
-                    commands.ClearDrawResourceDeclarations(); commands.UseResource(caster.chunk->vertices.Raw());
+                    commands.ClearResourceDeclarations(); commands.UseResource(caster.chunk->vertices.Raw());
                     commands.SetPushConstants(&push, sizeof(push)); commands.BindIndexBuffer(caster.chunk->indices.Raw());
                     commands.DrawIndexed(caster.chunk->indexCount);
                 }
@@ -491,12 +492,6 @@ void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
         commands.Draw(3);
 
         commands.BindPipeline(m_WireframeEnabled ? m_WireframePipeline.Raw() : m_SolidPipeline.Raw());
-        commands.UseResource(m_VoxelAtlas.Raw(), ResourceDeclarationScope::Pass);
-        commands.UseResource(graph.GetBuffer(resources.sunBuffer), ResourceDeclarationScope::Pass);
-        commands.UseResource(m_VoxelSampler.Raw());
-        commands.UseResource(resources.sampledShadowView.Raw(), ResourceDeclarationScope::Pass);
-        commands.UseResource(graph.GetBuffer(resources.shadowDataBuffer), ResourceDeclarationScope::Pass);
-        commands.UseResource(m_ShadowComparisonSampler.Raw());
         VoxelParameters params{
             .viewProjection = camera.GetViewProjectionMatrix(),
 			.chunkOrigin = glm::vec4(0.0f),     // Will be updated per-chunk below.
@@ -514,7 +509,14 @@ void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
             params.vertexBufferIndex = chunk.vertices->GetDescriptorIndex();
 
             commands.SetPushConstants(&params, sizeof(params));
-            commands.ClearDrawResourceDeclarations();
+            // Clearing declarations also clears shared shader resources; restore them for each draw.
+            commands.ClearResourceDeclarations();
+            commands.UseResource(m_VoxelAtlas.Raw());
+            commands.UseResource(graph.GetBuffer(resources.sunBuffer));
+            commands.UseResource(m_VoxelSampler.Raw());
+            commands.UseResource(resources.sampledShadowView.Raw());
+            commands.UseResource(graph.GetBuffer(resources.shadowDataBuffer));
+            commands.UseResource(m_ShadowComparisonSampler.Raw());
             commands.UseResource(chunk.vertices.Raw());
 
             commands.BindIndexBuffer(chunk.indices.Raw());

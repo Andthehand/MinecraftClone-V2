@@ -37,7 +37,7 @@ namespace Rendering {
 	inline constexpr const char* SHADOW_SHADER_MODULE = "shadow_depth.slang";
     inline constexpr glm::vec3 INITIAL_SUN_DIRECTION = {0.4f, 0.85f, 0.3f}; // Initial direction toward the sun.
     inline constexpr float SUN_ANGULAR_DIAMETER_DEGREES = 6.0f;
-    inline constexpr double SUN_ORBIT_PERIOD_SECONDS = 120.0;
+    inline constexpr double SUN_ORBIT_PERIOD_SECONDS = 12000.0;
     
     // Three cascades, with an overlap fraction before each split.
     inline constexpr uint32_t SHADOW_MAP_RESOLUTION = 2048;
