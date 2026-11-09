@@ -73,6 +73,14 @@ target_compile_features(MinecraftWorld PUBLIC cxx_std_23)
 set_target_properties(MinecraftWorld PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(MinecraftWorld PUBLIC glm::glm FastNoise PRIVATE MinecraftProfiling)
 
+option(MINECRAFT_BUILD_TESTS "Build CPU meshing regression tests" OFF)
+if(MINECRAFT_BUILD_TESTS)
+    enable_testing()
+    add_executable(ChunkMesherTests tests/ChunkMesherTests.cpp)
+    target_link_libraries(ChunkMesherTests PRIVATE MinecraftWorld)
+    add_test(NAME ChunkMesherTests COMMAND ChunkMesherTests)
+endif()
+
 add_executable(MinecraftClone
     src/main.cpp
     src/app/Application.cpp

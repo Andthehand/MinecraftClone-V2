@@ -1,8 +1,9 @@
-#include "meshing/ChunkMesh.h"
+#include "meshing/ChunkMesher.h"
 #include "meshing/BlockFaces.h"
 #include "diagnostics/Profiling.h"
 
 #include <cstddef>
+#include <cstdlib>
 
 namespace {
 void AddChunkQuad(ChunkMesh& mesh, glm::ivec3 cell, int axis, int sign,
@@ -39,61 +40,116 @@ void AddChunkQuad(ChunkMesh& mesh, glm::ivec3 cell, int axis, int sign,
         mesh.indices.push_back(base + indices[triangle + (sign > 0 ? 2 : 1)]);
     }
 }
+
+// Reuse scratch storage on each meshing thread without retaining world pointers.
+struct MeshScratch {
+    std::vector<uint32_t> voxels;
+    std::vector<uint8_t> solid;
+    std::vector<uint32_t> mask;
+};
 } // namespace
 
 ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbors) {
     MC_PROFILE_ZONE("Build chunk mesh");
     ChunkMesh mesh;
     const int size = static_cast<int>(octree.GetSideLength());
+    const size_t side = static_cast<size_t>(size);
     const bool uniform = octree.IsUniform();
     const uint32_t uniformMaterial = uniform ? octree.GetVoxel(0, 0, 0) : Blocks::Air;
-    if (uniform && uniformMaterial == Blocks::Air) return mesh;
+    if (uniform && uniformMaterial == Blocks::Air)
+        return mesh;
 
-    // Traverse the tree once and reuse contiguous voxel reads for all six face
-    // passes, instead of starting at the root for every cell and neighbor.
-    const size_t side = static_cast<size_t>(size);
-    std::vector<uint32_t> voxels;
+    bool exteriorEmpty = true;
+    bool enclosed = true;
+    for (int z = -1; z <= 1; ++z)
+        for (int y = -1; y <= 1; ++y)
+            for (int x = -1; x <= 1; ++x) {
+                if (x == 0 && y == 0 && z == 0) continue;
+                const Octree* neighbor = neighbors[ChunkNeighborIndex(x, y, z)];
+                const bool neighborUniform = neighbor && neighbor->IsUniform();
+                const bool neighborSolid = neighborUniform && neighbor->GetVoxel(0, 0, 0) != Blocks::Air;
+                exteriorEmpty &= !neighbor || (neighborUniform && !neighborSolid);
+                if (std::abs(x) + std::abs(y) + std::abs(z) == 1)
+                    enclosed &= neighborSolid;
+            }
+    if (uniform && enclosed)
+        return mesh;
+    if (uniform && exteriorEmpty) {
+        mesh.vertices.reserve(24);
+        mesh.indices.reserve(36);
+        for (int axis = 0; axis < 3; ++axis)
+            for (int sign : {-1, 1}) {
+                glm::ivec3 cell(0);
+                cell[axis] = sign > 0 ? size - 1 : 0;
+                AddChunkQuad(mesh, cell, axis, sign, size, size,
+                    BlockFaces::FaceTile(uniformMaterial, axis, sign));
+            }
+        return mesh;
+    }
+
+    thread_local MeshScratch scratch;
+    auto& voxels = scratch.voxels;
+    auto& solid = scratch.solid;
+    auto& mask = scratch.mask;
+    // A one-voxel halo includes face, edge and corner neighbors for AO.
+    const ptrdiff_t stride = size + 2;
+    const ptrdiff_t plane = stride * stride;
+    const auto indexOf = [=](int x, int y, int z) {
+        return (z + 1) * plane + (y + 1) * stride + x + 1;
+    };
+    solid.assign(static_cast<size_t>(plane * stride), 0);
     if (!uniform) {
         voxels.resize(side * side * side);
         octree.CopyVoxels(voxels);
     }
-    const auto voxelAt = [&](glm::ivec3 cell) {
-        if (uniform) return uniformMaterial;
-        return voxels[(static_cast<size_t>(cell.z) * side + cell.y) * side + cell.x];
-    };
-    const auto solidAt = [&](glm::ivec3 cell) {
-        glm::ivec3 offset(0);
-        for (int axis = 0; axis < 3; ++axis) {
-            if (cell[axis] < 0) { offset[axis] = -1; cell[axis] += size; }
-            else if (cell[axis] >= size) { offset[axis] = 1; cell[axis] -= size; }
-        }
-        if (offset == glm::ivec3(0)) return voxelAt(cell) != Blocks::Air;
-        const Octree* neighbor = neighbors[ChunkNeighborIndex(offset.x, offset.y, offset.z)];
-        return neighbor && neighbor->GetVoxel(cell.x, cell.y, cell.z) != Blocks::Air;
-    };
-    const auto faceAO = [&](glm::ivec3 cell, int axis, int sign) {
+    // Uniform chunks only visit boundary slices, whose visibility and AO read
+    // the exterior halo. Their interior occupancy is never sampled.
+    if (!uniform)
+        for (int z = 0; z < size; ++z)
+            for (int y = 0; y < size; ++y) {
+                auto* row = solid.data() + indexOf(0, y, z);
+                const auto* materials = voxels.data() + (z * side + y) * side;
+                for (int x = 0; x < size; ++x)
+                    row[x] = materials[x] != Blocks::Air;
+            }
+    // Only sample the touching slab/edge/corner of each neighboring octree.
+    for (int dz = -1; dz <= 1; ++dz)
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                if (dx == 0 && dy == 0 && dz == 0) continue;
+                const Octree* neighbor = neighbors[ChunkNeighborIndex(dx, dy, dz)];
+                if (!neighbor) continue;
+                const bool neighborUniform = neighbor->IsUniform();
+                const bool neighborSolid = neighborUniform && neighbor->GetVoxel(0, 0, 0) != Blocks::Air;
+                if (neighborUniform && !neighborSolid) continue;
+                const int xBegin = dx < 0 ? -1 : dx > 0 ? size : 0;
+                const int yBegin = dy < 0 ? -1 : dy > 0 ? size : 0;
+                const int zBegin = dz < 0 ? -1 : dz > 0 ? size : 0;
+                const int xEnd = dx == 0 ? size : xBegin + 1;
+                const int yEnd = dy == 0 ? size : yBegin + 1;
+                const int zEnd = dz == 0 ? size : zBegin + 1;
+                for (int z = zBegin; z < zEnd; ++z)
+                    for (int y = yBegin; y < yEnd; ++y)
+                        for (int x = xBegin; x < xEnd; ++x)
+                            solid[indexOf(x, y, z)] = neighborUniform ? neighborSolid
+                                : neighbor->GetVoxel(x - dx * size, y - dy * size, z - dz * size) != Blocks::Air;
+            }
+    const ptrdiff_t steps[3] = {1, stride, plane};
+    const auto faceAO = [&](ptrdiff_t cell, int axis, int sign) {
         const int u = (axis + 1) % 3, v = (axis + 2) % 3;
-        cell[axis] += sign;
+        cell += sign * steps[axis];
         constexpr int corners[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
         uint32_t result = 0;
         for (int corner = 0; corner < 4; ++corner) {
-            auto sideU = cell, sideV = cell, diagonal = cell;
-            sideU[u] += corners[corner][0];
-            sideV[v] += corners[corner][1];
-            diagonal[u] += corners[corner][0];
-            diagonal[v] += corners[corner][1];
-            const bool a = solidAt(sideU), b = solidAt(sideV);
-            const uint32_t level = a && b ? 0u : 3u - uint32_t(a) - uint32_t(b) - uint32_t(solidAt(diagonal));
+            const auto du = corners[corner][0] * steps[u];
+            const auto dv = corners[corner][1] * steps[v];
+            const bool a = solid[cell + du], b = solid[cell + dv];
+            const uint32_t level = a && b ? 0u : 3u - uint32_t(a) - uint32_t(b) - uint32_t(solid[cell + du + dv]);
             result |= level << (corner * 2);
         }
         return result;
     };
-    // An isolated uniform chunk has no exterior occluders and needs just six quads.
-    bool exteriorEmpty = true;
-    for (const Octree* neighbor : neighbors)
-        if (neighbor && (!neighbor->IsUniform() || neighbor->GetVoxel(0, 0, 0) != Blocks::Air))
-            exteriorEmpty = false;
-    std::vector<uint32_t> mask(side * side);
+    mask.resize(side * side);
     for (int axis = 0; axis < 3; ++axis) {
         const int u = (axis + 1) % 3, v = (axis + 2) % 3;
         for (int sign : {-1, 1}) {
@@ -102,41 +158,30 @@ ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbo
             const Octree* adjacent = neighbors[ChunkNeighborIndex(adjacentOffset.x, adjacentOffset.y, adjacentOffset.z)];
             if (uniform && adjacent && adjacent->IsUniform() && adjacent->GetVoxel(0, 0, 0) != Blocks::Air)
                 continue;
-            if (uniform && exteriorEmpty) {
-                glm::ivec3 cell(0);
-                cell[axis] = sign > 0 ? size - 1 : 0;
-                AddChunkQuad(mesh, cell, axis, sign, size, size,
-                    BlockFaces::FaceTile(uniformMaterial, axis, sign));
-                continue;
-            }
             // Uniform solid chunks only have potentially visible boundary faces.
             const int firstSlice = uniform && sign > 0 ? size - 1 : 0;
             const int endSlice = uniform ? firstSlice + 1 : size;
             for (int slice = firstSlice; slice < endSlice; ++slice) {
+                bool hasFaces = false;
                 for (int j = 0; j < size; ++j) {
                     for (int i = 0; i < size; ++i) {
                         glm::ivec3 cell(0);
                         cell[axis] = slice; cell[u] = i; cell[v] = j;
-                        const auto material = voxelAt(cell);
+                        const auto material = uniform ? uniformMaterial
+                            : voxels[(cell.z * side + cell.y) * side + cell.x];
                         if (material == Blocks::Air) {
                             mask[static_cast<size_t>(j) * size + i] = 0;
                             continue;
                         }
-                        auto neighbor = cell;
-                        neighbor[axis] += sign;
-                        bool exposed;
-                        if (neighbor[axis] < 0 || neighbor[axis] >= size) {
-                            neighbor[axis] = sign > 0 ? 0 : size - 1;
-                            exposed = !adjacent || adjacent->GetVoxel(neighbor.x, neighbor.y, neighbor.z)
-                                == Blocks::Air;
-                        } else {
-                            exposed = voxelAt(neighbor) == Blocks::Air;
-                        }
+                        const auto cellIndex = indexOf(cell.x, cell.y, cell.z);
+                        const bool exposed = !solid[cellIndex + sign * steps[axis]];
+                        hasFaces |= exposed;
                         mask[static_cast<size_t>(j) * size + i] =
                             exposed
-                            ? (BlockFaces::FaceTile(material, axis, sign) + 1) | (faceAO(cell, axis, sign) << 8) : 0;
+                            ? (BlockFaces::FaceTile(material, axis, sign) + 1) | (faceAO(cellIndex, axis, sign) << 8) : 0;
                     }
                 }
+                if (!hasFaces) continue;
                 for (int j = 0; j < size; ++j) {
                     for (int i = 0; i < size;) {
                         const auto tile = mask[static_cast<size_t>(j) * size + i];
