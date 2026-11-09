@@ -2,6 +2,29 @@ cmake_minimum_required(VERSION 3.25)
 
 project(MinecraftClone VERSION 0.1.0 LANGUAGES CXX)
 
+include(FetchContent)
+option(MINECRAFT_ENABLE_TRACY "Profile MinecraftClone and RealRHI with Tracy" OFF)
+
+# Create one client before RealRHI so game and RHI zones share a capture.
+if(MINECRAFT_ENABLE_TRACY)
+    set(TRACY_ENABLE ON CACHE BOOL "Enable Tracy instrumentation" FORCE)
+    set(TRACY_ON_DEMAND ON CACHE BOOL "Collect only while a profiler is connected")
+
+    FetchContent_Declare(tracy
+        GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+        GIT_TAG v0.15.0
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(tracy)
+endif()
+set(REALRHI_ENABLE_TRACY ${MINECRAFT_ENABLE_TRACY})
+
+add_library(MinecraftProfiling INTERFACE)
+if(MINECRAFT_ENABLE_TRACY)
+    target_compile_definitions(MinecraftProfiling INTERFACE MINECRAFT_ENABLE_TRACY=1)
+    target_link_libraries(MinecraftProfiling INTERFACE Tracy::TracyClient)
+endif()
+
 if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/external/RealRHI/CMakeLists.txt")
     message(FATAL_ERROR "RealRHI is missing. Run: git submodule update --init --recursive")
 endif()
@@ -19,7 +42,6 @@ endif()
 
 add_subdirectory(external/RealRHI)
 
-include(FetchContent)
 set(GLM_BUILD_LIBRARY OFF CACHE BOOL "Build the GLM library")
 set(GLM_BUILD_TESTS OFF CACHE BOOL "Build GLM tests")
 set(GLM_BUILD_INSTALL OFF CACHE BOOL "Generate GLM install rules")
@@ -41,7 +63,7 @@ FetchContent_MakeAvailable(FastNoise2)
 add_library(TerrainGenerator STATIC src/TerrainGenerator.cpp src/Octree.cpp)
 target_include_directories(TerrainGenerator PUBLIC src)
 target_compile_features(TerrainGenerator PUBLIC cxx_std_23)
-target_link_libraries(TerrainGenerator PUBLIC glm::glm FastNoise)
+target_link_libraries(TerrainGenerator PUBLIC glm::glm FastNoise PRIVATE MinecraftProfiling)
 
 add_executable(MinecraftClone
     src/main.cpp
@@ -55,6 +77,7 @@ add_executable(MinecraftClone
     src/FrameCounter.cpp
     src/Octree.h
     src/Options.h
+    src/Profiling.h
     src/Renderer.h
     src/Renderer.cpp
     src/Sun.h
@@ -66,7 +89,7 @@ add_executable(MinecraftClone
 )
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
-target_link_libraries(MinecraftClone PRIVATE RealRHI TerrainGenerator)
+target_link_libraries(MinecraftClone PRIVATE RealRHI TerrainGenerator MinecraftProfiling)
 
 add_custom_target(MinecraftCloneShaders
         COMMAND ${CMAKE_COMMAND} -E copy_directory

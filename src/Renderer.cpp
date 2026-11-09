@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include "ChunkMesh.h"
 #include "VoxelTextures.h"
+#include "Profiling.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -62,6 +63,7 @@ namespace {
 
 Renderer::Renderer(Device& device, Swapchain& swapchain)
     : m_Device(device), m_Swapchain(swapchain) {
+    MC_PROFILE_ZONE("Renderer initialization");
     const auto pixels = VoxelTextures::BuildAtlas();
     if (device.CreateTexture({
             .width = VoxelTextures::WIDTH, .height = VoxelTextures::HEIGHT,
@@ -87,6 +89,7 @@ Renderer::Renderer(Device& device, Swapchain& swapchain)
 }
 
 bool Renderer::CreateVoxelPipeline() {
+    MC_PROFILE_ZONE("Create voxel pipelines");
     Ref<Shader> voxelShader;
 	const ShaderDesc shaderDesc{
 		.moduleName = Options::Rendering::TERRAIN_SHADER_MODULE,
@@ -119,6 +122,7 @@ bool Renderer::CreateVoxelPipeline() {
 }
 
 bool Renderer::CreateShadowPipeline() {
+    MC_PROFILE_ZONE("Create shadow pipeline");
     Ref<Shader> depthShader;
 	const ShaderDesc shaderDesc{
 		.moduleName = Options::Rendering::SHADOW_SHADER_MODULE,
@@ -157,6 +161,7 @@ bool Renderer::CreateShadowPipeline() {
 }
 
 bool Renderer::CreateSkyPipeline() {
+    MC_PROFILE_ZONE("Create sky pipeline");
     Ref<Shader> skyShader;
     const ShaderDesc shaderDesc{
 		.moduleName = Options::Rendering::SKY_SHADER_MODULE,
@@ -183,6 +188,7 @@ bool Renderer::CreateSkyPipeline() {
 }
 
 bool Renderer::UpdateChunks(glm::vec3 position) {
+    MC_PROFILE_ZONE("Stream chunks");
     const ChunkCoord player = World::ChunkCoordinate(position);
     for (auto it = m_World.chunks.begin(); it != m_World.chunks.end();) {
         if (World::Distance(it->first, player) > Options::World::UNLOAD_RADIUS_CHUNKS) {
@@ -224,6 +230,7 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
         Ref<Buffer> vertices;
         Ref<Buffer> indices;
         if (!mesh.indices.empty()) {
+            MC_PROFILE_ZONE("Upload chunk mesh");
             if (m_Device.CreateBuffer({
                     .size = mesh.vertices.size() * sizeof(VoxelVertex),
                     .usage = BufferUsage::Storage,
@@ -251,6 +258,8 @@ bool Renderer::UpdateChunks(glm::vec3 position) {
         chunk.meshDirty = false;
     }
 
+    MC_PROFILE_PLOT("World chunks", static_cast<int64_t>(m_World.chunks.size()));
+    MC_PROFILE_PLOT("Generated chunks", static_cast<int64_t>(loaded));
     return true;
 }
 
@@ -280,6 +289,7 @@ struct Renderer::FrameResources {
 
 void Renderer::CollectVisibleChunks(RenderGraph& graph, FrameResources& resources, ChunkCoord player,
     const Camera& camera) {
+    MC_PROFILE_ZONE("Collect visible chunks");
     const auto planes = camera.GetFrustumPlanes();
 
 	// Since we are doing 3 cascaded shadow maps, we need to check visibility against the light frustum as well.
@@ -336,9 +346,12 @@ void Renderer::CollectVisibleChunks(RenderGraph& graph, FrameResources& resource
             return distanceSquared(a.coord) < distanceSquared(b.coord);
         }
     );
+    MC_PROFILE_PLOT("Visible chunks", static_cast<int64_t>(resources.visibleChunks.size()));
+    MC_PROFILE_PLOT("Shadow chunks", static_cast<int64_t>(resources.shadowVisibleChunks.size()));
 }
 
 void Renderer::BufferDataInitPass(RenderGraph& graph, FrameResources& resources) {
+    MC_PROFILE_ZONE("Build lighting pass");
     const SunData sunData{.sunDirection = glm::vec4(resources.sunDirection, 0)};
     resources.sunBuffer = graph.CreateBuffer({
         .size = sizeof(SunData), .usage = BufferUsage::Storage,
@@ -363,6 +376,7 @@ void Renderer::BufferDataInitPass(RenderGraph& graph, FrameResources& resources)
 }
 
 void Renderer::AddShadowMapPasses(RenderGraph& graph, FrameResources& resources) {
+    MC_PROFILE_ZONE("Build shadow passes");
     constexpr uint32_t layers = 3;
     constexpr uint32_t resolution = Options::Rendering::SHADOW_MAP_RESOLUTION;
 
@@ -441,6 +455,7 @@ void Renderer::AddShadowMapPasses(RenderGraph& graph, FrameResources& resources)
 
 void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
     const FrameContext& frame, const Camera& camera) {
+    MC_PROFILE_ZONE("Build voxel pass");
     const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
     const auto depth = graph.CreateTexture({
         .width = frame.width, .height = frame.height,
@@ -528,6 +543,7 @@ void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
 }
 
 bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
+    MC_PROFILE_ZONE("Draw frame");
     if (!UpdateChunks(camera.GetPosition())) {
         return false;
     }
@@ -538,7 +554,10 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera) {
     };
     
     const ChunkCoord player = World::ChunkCoordinate(camera.GetPosition());
-    resources.shadowMapData = ShadowMaps::BuildData(camera, resources.sunDirection, frame.width, frame.height);
+    {
+        MC_PROFILE_ZONE("Build shadow cascades");
+        resources.shadowMapData = ShadowMaps::BuildData(camera, resources.sunDirection, frame.width, frame.height);
+    }
     CollectVisibleChunks(graph, resources, player, camera);
     AddShadowMapPasses(graph, resources);
     BufferDataInitPass(graph, resources);

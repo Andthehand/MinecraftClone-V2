@@ -1,10 +1,12 @@
 #include "Octree.h"
+#include "Profiling.h"
 #include <algorithm>
 
 Octree::Octree(uint32_t depth) 
 	: m_Depth(depth), m_SideLength(std::uint32_t{ 1 } << depth) {}
 
 void Octree::CopyVoxels(std::span<std::uint32_t> destination) const {
+	MC_PROFILE_ZONE("Copy octree voxels");
 	// Divide to validate even volumes whose voxel count would overflow size_t.
 	CopyNode(m_Root, destination.data(), m_SideLength, m_SideLength);
 }

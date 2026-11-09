@@ -1,5 +1,6 @@
 #include "TerrainGenerator.h"
 #include "VoxelTextures.h"
+#include "Profiling.h"
 
 #include <algorithm>
 #include <cmath>
@@ -86,6 +87,7 @@ TerrainGenerator::TerrainGenerator(int seed) : m_Seed(seed) {
 }
 
 void TerrainGenerator::Generate(Octree& octree, glm::ivec3 chunkCoord) const {
+    MC_PROFILE_ZONE("Generate terrain chunk");
     const int size = static_cast<int>(octree.GetSideLength());
     const glm::ivec3 origin = chunkCoord * size;
     // Entire underground/sky chunks need only a single uniform node.
@@ -102,13 +104,22 @@ void TerrainGenerator::Generate(Octree& octree, glm::ivec3 chunkCoord) const {
     std::vector<float> heights(static_cast<size_t>(size) * size);
     // One SIMD batch per XZ column grid. Y never enters the height calculation,
     // so stacked chunks share the same surface and material layers.
-    m_HeightNoise->GenUniformGrid2D(heights.data(), float(origin.x), float(origin.z),
-        size, size, 1.0f, 1.0f, m_Seed);
+    {
+        MC_PROFILE_ZONE("Generate height noise");
+        m_HeightNoise->GenUniformGrid2D(heights.data(), float(origin.x), float(origin.z),
+            size, size, 1.0f, 1.0f, m_Seed);
+    }
 
     // A complete quadtree has (4 * leafCount - 1) / 3 nodes.
     std::vector<HeightRange> ranges((4 * heights.size() - 1) / 3);
-    BuildHeightRanges(ranges, 0, heights, size, 0, 0, size);
+    {
+        MC_PROFILE_ZONE("Build height ranges");
+        BuildHeightRanges(ranges, 0, heights, size, 0, 0, size);
+    }
     Node root;
-    BuildTerrainNode(root, ranges, 0, origin.y, size);
+    {
+        MC_PROFILE_ZONE("Build terrain octree");
+        BuildTerrainNode(root, ranges, 0, origin.y, size);
+    }
     octree.m_Root = std::move(root);
 }

@@ -26,10 +26,20 @@
       "displayName": "Windows x64 Release with debug symbols",
       "inherits": "windows-base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+    },
+    {
+      "name": "windows-profile",
+      "displayName": "Windows x64 Release with Tracy",
+      "inherits": "windows-release",
+      "cacheVariables": {
+        "MINECRAFT_ENABLE_TRACY": "ON",
+        "TRACY_NO_CODE_TRANSFER": "OFF"
+      }
     }
   ],
   "buildPresets": [
     { "name": "windows-debug", "configurePreset": "windows-debug", "targets": ["MinecraftClone"] },
-    { "name": "windows-release", "configurePreset": "windows-release", "targets": ["MinecraftClone"] }
+    { "name": "windows-release", "configurePreset": "windows-release", "targets": ["MinecraftClone"] },
+    { "name": "windows-profile", "configurePreset": "windows-profile", "targets": ["MinecraftClone"] }
   ]
 }

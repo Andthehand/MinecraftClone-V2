@@ -1,5 +1,6 @@
 #include "ChunkMesh.h"
 #include "VoxelTextures.h"
+#include "Profiling.h"
 
 #include <cstddef>
 
@@ -41,6 +42,7 @@ void AddChunkQuad(ChunkMesh& mesh, glm::ivec3 cell, int axis, int sign,
 } // namespace
 
 ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbors) {
+    MC_PROFILE_ZONE("Build chunk mesh");
     ChunkMesh mesh;
     const int size = static_cast<int>(octree.GetSideLength());
     const bool uniform = octree.IsUniform();

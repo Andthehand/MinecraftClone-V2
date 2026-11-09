@@ -1,6 +1,7 @@
 #include "Application.h"
 #include "Options.h"
 #include "Renderer.h"
+#include "Profiling.h"
 
 #include <SDL3/SDL.h>
 
@@ -53,12 +54,14 @@ void CaptureDebugMessage(const DebugMessage& message) {
 Application::Application() = default;
 
 Application::~Application() {
+	MC_PROFILE_ZONE("Application shutdown");
 	if (m_Device) {
 		m_Device->WaitIdle();
 	}
 }
 
 bool Application::Initialize() {
+	MC_PROFILE_ZONE("Application initialization");
 	const DeviceDesc deviceDesc{
 		.applicationName = Options::Application::NAME,
 		.shaderDirectory = Options::Application::SHADER_DIRECTORY,
@@ -103,20 +106,28 @@ int Application::Run() {
 
 	auto previousFrameTime = std::chrono::steady_clock::now();
 	m_FrameCounter.Reset();
-	while (ProcessEvents()) {
-		const auto currentFrameTime = std::chrono::steady_clock::now();
-		const float deltaTime = std::chrono::duration<float>(currentFrameTime - previousFrameTime).count();
-		previousFrameTime = currentFrameTime;
+	while (true) {
+		{
+			MC_PROFILE_ZONE("Frame");
+			if (!ProcessEvents()) {
+				break;
+			}
+			const auto currentFrameTime = std::chrono::steady_clock::now();
+			const float deltaTime = std::chrono::duration<float>(currentFrameTime - previousFrameTime).count();
+			previousFrameTime = currentFrameTime;
 
-		OnUpdate(deltaTime);
-		if (!OnRender(deltaTime)) {
-			return 1;
+			OnUpdate(deltaTime);
+			if (!OnRender(deltaTime)) {
+				return 1;
+			}
 		}
+		MC_PROFILE_FRAME();
 	}
 	return 0;
 }
 
 bool Application::ProcessEvents() {
+	MC_PROFILE_ZONE("Process events");
 	bool running = true;
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
@@ -132,6 +143,7 @@ bool Application::ProcessEvents() {
 }
 
 void Application::OnUpdate(float deltaTime) {
+	MC_PROFILE_ZONE("Update camera");
 	const bool* keyboard = SDL_GetKeyboardState(nullptr);
 	const float moveForward = (keyboard[SDL_SCANCODE_W] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_S] ? 1.0f : 0.0f);
 	const float moveRight = (keyboard[SDL_SCANCODE_D] ? 1.0f : 0.0f) - (keyboard[SDL_SCANCODE_A] ? 1.0f : 0.0f);
@@ -145,6 +157,7 @@ void Application::OnUpdate(float deltaTime) {
 }
 
 bool Application::OnRender(float deltaTime) {
+	MC_PROFILE_ZONE("Render frame");
 	const FrameContext frame = m_Swapchain->BeginFrame();
 	if (!frame.backBufferView) {
 		if (m_Window->IsMinimized() || m_Window->GetWidth() == 0 || m_Window->GetHeight() == 0) {
