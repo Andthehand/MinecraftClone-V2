@@ -60,47 +60,49 @@ FetchContent_Declare(FastNoise2
 )
 FetchContent_MakeAvailable(FastNoise2)
 
-add_library(TerrainGenerator STATIC src/TerrainGenerator.cpp src/Octree.cpp)
-target_include_directories(TerrainGenerator PUBLIC src)
-target_compile_features(TerrainGenerator PUBLIC cxx_std_23)
-target_link_libraries(TerrainGenerator PUBLIC glm::glm FastNoise PRIVATE MinecraftProfiling)
+# CPU world and meshing code has no RealRHI or SDL dependency.
+add_library(MinecraftWorld STATIC
+    src/world/Octree.cpp
+    src/world/TerrainGenerator.cpp
+    src/world/World.cpp
+    src/world/ChunkStreamer.cpp
+    src/meshing/ChunkMesher.cpp
+)
+target_include_directories(MinecraftWorld PUBLIC src)
+target_compile_features(MinecraftWorld PUBLIC cxx_std_23)
+set_target_properties(MinecraftWorld PROPERTIES CXX_EXTENSIONS OFF)
+target_link_libraries(MinecraftWorld PUBLIC glm::glm FastNoise PRIVATE MinecraftProfiling)
 
 add_executable(MinecraftClone
     src/main.cpp
-    src/Application.h
-    src/Application.cpp
-    src/Camera.h
-    src/Camera.cpp
-    src/ChunkMesh.h
-    src/ChunkMesh.cpp
-    src/FrameCounter.h
-    src/FrameCounter.cpp
-    src/Octree.h
-    src/Options.h
-    src/Profiling.h
-    src/Renderer.h
-    src/Renderer.cpp
-    src/Sun.h
-    src/Sun.cpp
-    src/ShadowMaps.h
-    src/VoxelTextures.h
-    src/World.h
-    src/World.cpp
+    src/app/Application.cpp
+    src/app/CameraController.cpp
+    src/diagnostics/FrameCounter.cpp
+    src/rendering/Camera.cpp
+    src/rendering/ChunkRenderCache.cpp
+    src/rendering/Renderer.cpp
+    src/rendering/Sun.cpp
+    src/rendering/Visibility.cpp
+    src/rendering/passes/LightingPass.cpp
+    src/rendering/passes/ShadowPass.cpp
+    src/rendering/passes/VoxelPass.cpp
 )
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
-target_link_libraries(MinecraftClone PRIVATE RealRHI TerrainGenerator MinecraftProfiling)
+target_link_libraries(MinecraftClone PRIVATE RealRHI MinecraftWorld MinecraftProfiling)
 
 add_custom_target(MinecraftCloneShaders
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders"
-            "$<TARGET_FILE_DIR:MinecraftClone>/shaders"
-        COMMENT "Copying MinecraftClone shaders"
-    )
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders"
+        "$<TARGET_FILE_DIR:MinecraftClone>/shaders"
+    COMMENT "Copying MinecraftClone shaders"
+)
 add_dependencies(MinecraftClone MinecraftCloneShaders)
 
-if(MSVC)
-    target_compile_options(MinecraftClone PRIVATE /W4 /permissive-)
-else()
-    target_compile_options(MinecraftClone PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+foreach(target MinecraftWorld MinecraftClone)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /permissive-)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endforeach()

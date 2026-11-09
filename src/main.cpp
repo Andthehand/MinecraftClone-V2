@@ -1,5 +1,5 @@
-#include "Application.h"
-#include "Profiling.h"
+#include "app/Application.h"
+#include "diagnostics/Profiling.h"
 
 int main() {
 	MC_PROFILE_THREAD("Main");

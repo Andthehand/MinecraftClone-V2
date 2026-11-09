@@ -3,7 +3,7 @@
 
 static const float SHADOW_CLEAR = 1.0f;
 
-// Matches VoxelParameters in Renderer.cpp; field order is part of the upload layout.
+// Matches VoxelParameters in rendering/ShaderData.h; field order is part of the upload layout.
 struct VoxelParameters {
     column_major float4x4 viewProjection;
     float4 chunkOrigin;
