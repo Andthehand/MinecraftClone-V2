@@ -68,7 +68,12 @@ void Renderer::AddShadowMapPasses(RenderGraph& graph, FrameResources& resources)
                 commands.SetViewport({.width = float(resolution), .height = float(resolution)});
                 commands.SetScissor({.width = resolution, .height = resolution});
 
-                commands.BindPipeline(m_ShadowDepthPipeline.Raw());
+                commands.BindShaderProgram(m_ShadowDepthShader.Raw());
+                commands.SetGraphicsState({
+                    .raster = {.cullMode = CullMode::Front},
+                    .depth = {.depthTestEnable = true, .depthWriteEnable = true, .compareOp = CompareOp::Less},
+                });
+
                 for (const auto& caster : resources.shadowVisibleChunks) {
                     if ((caster.cascadeMask & (1u << cascade)) == 0) continue;
                     const glm::vec3 minimum = glm::vec3(caster.coord) * float(Options::World::CHUNK_SIZE);

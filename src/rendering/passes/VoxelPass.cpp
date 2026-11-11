@@ -57,11 +57,21 @@ void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
             glm::vec4(resources.sunDirection, m_Sun.GetAngularRadiusTangent()),
             glm::vec4(m_Sun.GetOrbitAxis(), 0),
         };
-        commands.BindPipeline(m_SkyPipeline.Raw());
+        commands.BindShaderProgram(m_SkyShader.Raw());
+        commands.SetGraphicsState({
+            .raster = {.cullMode = CullMode::None},
+            .depth = {.depthTestEnable = false, .depthWriteEnable = false},
+        });
         commands.SetPushConstants(&skyParameters, sizeof(skyParameters));
         commands.Draw(3);
 
-        commands.BindPipeline(m_WireframeEnabled ? m_WireframePipeline.Raw() : m_SolidPipeline.Raw());
+        commands.BindShaderProgram(m_VoxelShader.Raw());
+        commands.SetGraphicsState({
+            .raster = {.cullMode = CullMode::Front,
+                .fillMode = m_WireframeEnabled ? FillMode::Wireframe : FillMode::Solid},
+            .depth = {.depthTestEnable = true, .depthWriteEnable = true, .compareOp = CompareOp::Less},
+        });
+
         VoxelParameters params{
             .viewProjection = camera.GetViewProjectionMatrix(),
 			.chunkOrigin = glm::vec4(0.0f),     // Will be updated per-chunk below.

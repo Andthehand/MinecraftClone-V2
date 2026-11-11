@@ -20,9 +20,9 @@ public:
     void ToggleWireframe() { m_WireframeEnabled = !m_WireframeEnabled; }
 
 private:
-    bool CreateVoxelPipeline();
-    bool CreateSkyPipeline();
-    bool CreateShadowPipeline();
+    bool CreateVoxelShader();
+    bool CreateSkyShader();
+    bool CreateShadowShader();
 
     struct FrameResources;
     void CollectVisibleChunks(RealRHI::RenderGraph& graph, FrameResources& resources, const World& world, ChunkCoord player,
@@ -36,10 +36,9 @@ private:
     RealRHI::Swapchain& m_Swapchain;
     std::unique_ptr<RealRHI::TransientResourcePool> m_Pool;
 
-    RealRHI::Ref<RealRHI::Pipeline> m_SolidPipeline;
-    RealRHI::Ref<RealRHI::Pipeline> m_WireframePipeline;
-    RealRHI::Ref<RealRHI::Pipeline> m_SkyPipeline;
-    RealRHI::Ref<RealRHI::Pipeline> m_ShadowDepthPipeline;
+    RealRHI::Ref<RealRHI::Shader> m_VoxelShader;
+    RealRHI::Ref<RealRHI::Shader> m_SkyShader;
+    RealRHI::Ref<RealRHI::Shader> m_ShadowDepthShader;
 
     RealRHI::Ref<RealRHI::Texture> m_VoxelAtlas;
     RealRHI::Ref<RealRHI::Sampler> m_VoxelSampler;
