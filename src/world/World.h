@@ -4,25 +4,40 @@
 #include "world/ChunkCoord.h"
 #include "world/ChunkNeighborhood.h"
 #include "world/TerrainGenerator.h"
+
 #include <unordered_map>
+#include <optional>
 
 class World {
 public:
     using ChunkMap = std::unordered_map<ChunkCoord, Chunk, ChunkCoordHash>;
 
+    // Getters
     [[nodiscard]] const ChunkMap& GetChunks() const { return m_Chunks; }
-    [[nodiscard]] bool Contains(ChunkCoord coord) const { return m_Chunks.contains(coord); }
+    [[nodiscard]] uint64_t GetNavigationRevision(ChunkCoord coord) const;
+    [[nodiscard]] uint64_t GetNavigationRevision() const { return m_NavigationRevision; }
+    [[nodiscard]] ChunkMeshNeighbors GetChunkNeighbors(ChunkCoord coord) const;
+    [[nodiscard]] std::optional<uint32_t> GetBlock(glm::ivec3 position) const;
+
+    // Unloaded terrain is unknown, never implicitly air. Coordinates are blocks.
+    // Edits loaded chunks only; also dirties neighboring meshes at boundaries.
+    bool SetBlock(glm::ivec3 position, uint32_t block);
+
+    [[nodiscard]] bool ContainsChunk(ChunkCoord coord) const { return m_Chunks.contains(coord); }
+    [[nodiscard]] bool CanMeshChunk(ChunkCoord coord, ChunkCoord player) const;
+
+    void MarkMeshed(ChunkCoord coord);
     void GenerateChunk(ChunkCoord coord);
     void RemoveChunk(ChunkCoord coord);
-    void MarkMeshed(ChunkCoord coord);
 
-    [[nodiscard]] ChunkMeshNeighbors GetChunkNeighbors(ChunkCoord coord) const;
-    [[nodiscard]] bool CanMeshChunk(ChunkCoord coord, ChunkCoord player) const;
     // Floor before converting so negative positions map to the correct chunk.
     [[nodiscard]] static ChunkCoord ChunkCoordinate(glm::vec3 position);
     [[nodiscard]] static int Distance(ChunkCoord a, ChunkCoord b);
-
 private:
     ChunkMap m_Chunks;
     TerrainGenerator m_Terrain;
+
+	// Used in cache to check if neighbor chunks have
+    // changed since the last navigation graph build.
+    uint64_t m_NavigationRevision = 0;
 };

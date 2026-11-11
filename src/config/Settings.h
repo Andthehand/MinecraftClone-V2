@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <glm/vec3.hpp>
 
@@ -29,6 +30,33 @@ namespace World {
     static_assert(MAX_CHUNKS_GENERATED_PER_FRAME > 0);
     static_assert(TERRAIN_FEATURE_SCALE > 0 && TERRAIN_OCTAVES > 0);
     static_assert(TERRAIN_HEIGHT_AMPLITUDE >= 0 && TERRAIN_DIRT_DEPTH >= 0);
+}
+namespace Navigation {
+    inline constexpr size_t DEFAULT_HIERARCHICAL_MAX_EXPANDED_NODES = 500000;
+    inline constexpr int DEFAULT_HIERARCHICAL_TIME_LIMIT_MS = 50; // Zero disables the deadline.
+
+    inline constexpr int CLUSTER_SIZE_BLOCKS = 16;
+    inline constexpr int ENTRANCE_PATCH_SIZE_BLOCKS = 8;
+
+    inline constexpr size_t MAX_CACHED_REGION_BYTES = 64 * 1024 * 1024;
+    inline constexpr size_t MAX_CACHED_CHUNK_SNAPSHOTS = 32;
+    inline constexpr size_t MAX_CACHED_SEARCH_TREES_PER_REGION = 32;
+
+    // Number of budget-check calls between clock reads. Must be a power of two.
+    // Forced checks bypass this interval.
+    inline constexpr uint32_t TIME_LIMIT_CHECK_INTERVAL_CALLS = 64;
+
+    // Entrance selection reads neighboring region graphs, including their voxel halos.
+    // Keep those dependencies within the 27 chunks tracked by cache validation.
+    static_assert(World::CHUNK_SIZE >= 64,
+                  "Navigation cache validation requires chunks at least 64 blocks wide.");
+    static_assert(CLUSTER_SIZE_BLOCKS > 0 && CLUSTER_SIZE_BLOCKS <= World::CHUNK_SIZE / 2,
+                  "Navigation clusters must fit within half a world chunk.");
+    static_assert(World::CHUNK_SIZE % CLUSTER_SIZE_BLOCKS == 0);
+    static_assert(ENTRANCE_PATCH_SIZE_BLOCKS > 0 && ENTRANCE_PATCH_SIZE_BLOCKS <= CLUSTER_SIZE_BLOCKS);
+    static_assert(DEFAULT_HIERARCHICAL_TIME_LIMIT_MS >= 0);
+    static_assert(MAX_CACHED_REGION_BYTES > 0 && MAX_CACHED_CHUNK_SNAPSHOTS > 0 && MAX_CACHED_SEARCH_TREES_PER_REGION > 0);
+    static_assert(TIME_LIMIT_CHECK_INTERVAL_CALLS > 0 && (TIME_LIMIT_CHECK_INTERVAL_CALLS & (TIME_LIMIT_CHECK_INTERVAL_CALLS - 1)) == 0);
 }
 namespace Rendering {
     inline constexpr uint64_t TRANSIENT_RESOURCE_POOL_BYTES = 256ull * 1024 * 1024;

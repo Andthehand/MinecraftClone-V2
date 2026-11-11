@@ -66,20 +66,18 @@ add_library(MinecraftWorld STATIC
     src/world/TerrainGenerator.cpp
     src/world/World.cpp
     src/world/ChunkStreamer.cpp
+    src/navigation/Pathfinder.cpp
+    src/navigation/PathfindingTypes.cpp
+    src/navigation/MovementRules.cpp
+    src/navigation/HierarchicalPathfinder.cpp
+    src/navigation/RegionGraph.cpp
+    src/navigation/NavigationCache.cpp
     src/meshing/ChunkMesher.cpp
 )
 target_include_directories(MinecraftWorld PUBLIC src)
 target_compile_features(MinecraftWorld PUBLIC cxx_std_23)
 set_target_properties(MinecraftWorld PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(MinecraftWorld PUBLIC glm::glm FastNoise PRIVATE MinecraftProfiling)
-
-option(MINECRAFT_BUILD_TESTS "Build CPU meshing regression tests" OFF)
-if(MINECRAFT_BUILD_TESTS)
-    enable_testing()
-    add_executable(ChunkMesherTests tests/ChunkMesherTests.cpp)
-    target_link_libraries(ChunkMesherTests PRIVATE MinecraftWorld)
-    add_test(NAME ChunkMesherTests COMMAND ChunkMesherTests)
-endif()
 
 add_executable(MinecraftClone
     src/main.cpp

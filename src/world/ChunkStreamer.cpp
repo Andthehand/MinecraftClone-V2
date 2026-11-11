@@ -41,7 +41,7 @@ ChunkUpdates ChunkStreamer::Update(World& world, glm::vec3 position) {
     for (const auto offset : GetChunkLoadOffsets()) {
         if (loaded == Options::World::MAX_CHUNKS_GENERATED_PER_FRAME) break;
         const ChunkCoord coord = player + offset;
-        if (world.Contains(coord)) continue;
+        if (world.ContainsChunk(coord)) continue;
         world.GenerateChunk(coord);
         ++loaded;
     }

@@ -24,6 +24,7 @@ private:
     bool Initialize();
     bool ProcessEvents();
 
+private:
     // Keep the device alive until all graphics resources are released.
     std::unique_ptr<RealRHI::Device> m_Device;
     RealRHI::Ref<RealRHI::Window> m_Window;
