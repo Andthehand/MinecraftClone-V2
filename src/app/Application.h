@@ -6,6 +6,7 @@
 
 #include "rendering/Camera.h"
 #include "world/World.h"
+#include "world/Block.h"
 #include "world/ChunkStreamer.h"
 #include "diagnostics/FrameCounter.h"
 
@@ -23,6 +24,8 @@ public:
 private:
     bool Initialize();
     bool ProcessEvents();
+    void EditBlock(float mouseX, float mouseY, int windowWidth, int windowHeight, bool place);
+    void UpdateWindowTitle();
 
 private:
     // Keep the device alive until all graphics resources are released.
@@ -36,4 +39,6 @@ private:
     std::unique_ptr<Renderer> m_Renderer;
 
     FrameCounter m_FrameCounter;
+    uint32_t m_SelectedBlock = Blocks::Grass;
+    double m_LastFps = 0.0;
 };

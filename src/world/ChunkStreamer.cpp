@@ -50,7 +50,7 @@ ChunkUpdates ChunkStreamer::Update(World& world, glm::vec3 position) {
     for (const auto& [coord, chunk] : world.GetChunks()) {
         if (!chunk.meshDirty || !world.CanMeshChunk(coord, player)) continue;
         updates.completed.push_back({coord, BuildChunkMesh(chunk.octree, world.GetChunkNeighbors(coord))});
-        world.MarkMeshed(coord);
+        world.ClearMeshDirtyFlag(coord);
     }
     MC_PROFILE_PLOT("World chunks", static_cast<int64_t>(world.GetChunks().size()));
     MC_PROFILE_PLOT("Generated chunks", static_cast<int64_t>(loaded));

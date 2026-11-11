@@ -111,4 +111,7 @@ namespace Application {
     inline constexpr bool ENABLE_VSYNC = true;
     inline constexpr uint32_t MINIMIZED_FRAME_DELAY_MS = 16;
 }
+namespace Game {
+    inline constexpr float BLOCK_INTERACTION_REACH = 8.0f;
+}
 }

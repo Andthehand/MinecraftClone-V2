@@ -5,6 +5,8 @@
 #include "diagnostics/Profiling.h"
 
 #include <SDL3/SDL.h>
+#include <glm/common.hpp>
+#include <glm/trigonometric.hpp>
 
 #include <chrono>
 #include <format>
@@ -94,7 +96,7 @@ bool Application::Initialize() {
         return false;
     }
 
-    m_Window->SetTitle(std::format("{} | -- FPS", Options::Application::NAME).c_str());
+    UpdateWindowTitle();
     m_Renderer = std::make_unique<Renderer>(*m_Device, *m_Swapchain);
     return m_Renderer->Initialize();
 }
@@ -137,9 +139,77 @@ bool Application::ProcessEvents() {
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_F3 && !event.key.repeat) {
             m_Renderer->ToggleWireframe();
         }
+        if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+            switch (event.key.scancode) {
+                case SDL_SCANCODE_1: 
+                    m_SelectedBlock = Blocks::Grass;   
+                    break;
+                case SDL_SCANCODE_2: 
+                    m_SelectedBlock = Blocks::Dirt;    
+                    break;
+                case SDL_SCANCODE_3: 
+                    m_SelectedBlock = Blocks::Stone;   
+                    break;
+            }
+            UpdateWindowTitle();
+        }
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN
+            && (event.button.button == SDL_BUTTON_LEFT || event.button.button == SDL_BUTTON_RIGHT)) {
+            int width = 0, height = 0;
+            // Mouse coordinates and window size both use logical pixels, including on high-DPI displays.
+            if (auto* window = SDL_GetWindowFromID(event.button.windowID);
+                window && SDL_GetWindowSize(window, &width, &height)) {
+                EditBlock(event.button.x, event.button.y, width, height, event.button.button == SDL_BUTTON_RIGHT);
+            }
+        }
     }
 
     return running;
+}
+
+void Application::UpdateWindowTitle() {
+    const char* block = m_SelectedBlock == Blocks::Grass ? "Grass"
+        : m_SelectedBlock == Blocks::Dirt ? "Dirt" : "Stone";
+    
+    m_Window->SetTitle(std::format("{} | {:.0f} FPS | LMB: break | RMB: place {} | 1/2/3: block",
+        Options::Application::NAME, m_LastFps, block).c_str());
+}
+
+void Application::EditBlock(float mouseX, float mouseY, int windowWidth, int windowHeight, bool place) {
+    if (windowWidth <= 0 || windowHeight <= 0) {
+        return;
+    }
+
+    const float x = 2.0f * mouseX / float(windowWidth) - 1.0f;
+    const float y = 1.0f - 2.0f * mouseY / float(windowHeight);
+    const float halfHeight = glm::tan(m_Camera.GetFovYRadians() * 0.5f);
+    const float aspect = float(windowWidth) / float(windowHeight);
+    const glm::vec3 direction = m_Camera.GetForward()
+        + m_Camera.GetRight() * (x * halfHeight * aspect)
+        + m_Camera.GetUp() * (y * halfHeight);
+    const auto hit = m_World.Raycast(m_Camera.GetPosition(), direction, Options::Game::BLOCK_INTERACTION_REACH);
+    if (!hit) {
+        return;
+    }
+    if (!place) {
+        m_World.SetBlock(hit->position, Blocks::Air);
+        return;
+    }
+
+    if (hit->normal == glm::ivec3(0)) {
+		// Can't place a block when starting inside solid.
+        return;
+    }
+
+    const glm::ivec3 position = hit->position + hit->normal;
+    if (position == glm::ivec3(glm::floor(m_Camera.GetPosition()))) {
+		// Don't place a block that would intersect the camera.
+        return;
+    }
+
+    if (m_World.GetBlock(position) == Blocks::Air) {
+        m_World.SetBlock(position, m_SelectedBlock);
+    }
 }
 
 void Application::OnUpdate(float deltaTime) {
@@ -174,7 +244,8 @@ bool Application::OnRender(float deltaTime) {
     }
 
     if (const auto fps = m_FrameCounter.CountFrame(deltaTime)) {
-        m_Window->SetTitle(std::format("{} | {:.0f} FPS", Options::Application::NAME, *fps).c_str());
+        m_LastFps = *fps;
+        UpdateWindowTitle();
     }
     return true;
 }
