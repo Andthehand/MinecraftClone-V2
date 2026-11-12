@@ -38,11 +38,12 @@ void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
         sampled, TextureLayout::ShaderRead, RenderGraphAccess::Read});
 
     graph.AddPass({.name = "RasterizeVoxels.CSM3", .resources = std::move(uses)},
-        [this, &graph, &resources, frame, camera, depth](CommandList& commands) {
+        [this, &resources, frame, camera, depth](RenderGraphContext& context) {
+            auto& commands = context.GetCommands();
             commands.BeginRendering({
                 .colorAttachments = {{.target = frame.backBufferView, .clearColor = {0.45f, 0.65f, 0.9f, 1.0f}}},
                 .hasDepth = true,
-                .depthAttachment = {.target = graph.GetTexture(depth)->GetTextureView()},
+                .depthAttachment = {.target = context.GetTexture(depth)->GetTextureView()},
                 .renderArea = {.width = frame.width, .height = frame.height},
         });
 
@@ -80,7 +81,7 @@ void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
             .textureIndex = m_VoxelAtlas->GetSampledImageDescriptorIndex(),
             .samplerIndex = m_VoxelSampler->GetDescriptorIndex(),
 			.vertexBufferIndex = 0,             // Will be updated per-chunk below.
-            .sunDataIndex = graph.GetBuffer(resources.sunBuffer)->GetDescriptorIndex(),
+            .sunDataIndex = context.GetBuffer(resources.sunBuffer)->GetDescriptorIndex(),
         };
 
         for (const auto& [coord, visibleChunk] : resources.visibleChunks) {
@@ -92,10 +93,10 @@ void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
             // Clearing declarations also clears shared shader resources; restore them for each draw.
             commands.ClearResourceDeclarations();
             commands.UseResource(m_VoxelAtlas.Raw());
-            commands.UseResource(graph.GetBuffer(resources.sunBuffer));
+            commands.UseResource(context.GetBuffer(resources.sunBuffer));
             commands.UseResource(m_VoxelSampler.Raw());
             commands.UseResource(resources.sampledShadowView.Raw());
-            commands.UseResource(graph.GetBuffer(resources.shadowDataBuffer));
+            commands.UseResource(context.GetBuffer(resources.shadowDataBuffer));
             commands.UseResource(m_ShadowComparisonSampler.Raw());
             commands.UseResource(chunk.vertices.Raw());
 

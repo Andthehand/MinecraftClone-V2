@@ -25,10 +25,15 @@ void Renderer::AddShadowMapPasses(RenderGraph& graph, FrameResources& resources)
     });
 
 	constexpr ResourceState shadowDataWrite{ PipelineStage::AllCommands, ResourceAccess::MemoryWrite };
-    graph.AddPass({.name = "InitializeShadowMaps", 
-        .resources = {{resources.shadowDataBuffer, shadowDataWrite, TextureLayout::Undefined, RenderGraphAccess::Write}}},
-        [this, &graph, &resources, layers](CommandList&) {
-            auto* texture = graph.GetTexture(resources.shadowTexture);
+    constexpr ResourceState shadowTextureWrite{ PipelineStage::EarlyFragmentTests | PipelineStage::LateFragmentTests,
+        ResourceAccess::DepthStencilRead | ResourceAccess::DepthStencilWrite };
+    auto uses = resources.geometryResourceUses;
+    uses.push_back({resources.shadowTexture, shadowTextureWrite, TextureLayout::DepthStencilAttachment, RenderGraphAccess::Write});
+    uses.push_back({resources.shadowDataBuffer, shadowDataWrite, TextureLayout::Undefined, RenderGraphAccess::Write});
+    graph.AddPass({.name = "RenderDirectionalShadowMaps", .resources = std::move(uses)},
+        [this, &resources, layers](RenderGraphContext& context) {
+            auto& commands = context.GetCommands();
+            auto* texture = context.GetTexture(resources.shadowTexture);
             if (m_Device.CreateTextureView(texture, { .type = TextureViewType::View2DArray, .arrayLayerCount = layers,
                 .usage = TextureUsage::ShaderResource }, resources.sampledShadowView) != Result::Success) {
                 std::cerr << "Could not create sampled shadow view.\n";
@@ -44,19 +49,9 @@ void Renderer::AddShadowMapPasses(RenderGraph& graph, FrameResources& resources)
 
             auto data = resources.shadowMapData;
             data.indices = {resources.sampledShadowView->GetSampledImageDescriptorIndex(), m_ShadowComparisonSampler->GetDescriptorIndex(), 0u, 0u};
-            if (graph.GetBuffer(resources.shadowDataBuffer)->WriteData(&data, sizeof(data)) != Result::Success) {
+            if (context.GetBuffer(resources.shadowDataBuffer)->WriteData(&data, sizeof(data)) != Result::Success) {
                 std::cerr << "Could not upload shadow parameters.\n";
             }
-        });
-
-    auto uses = resources.geometryResourceUses;
-	constexpr ResourceState shadowTextureWrite{ PipelineStage::EarlyFragmentTests | PipelineStage::LateFragmentTests,
-		                                        ResourceAccess::DepthStencilRead | ResourceAccess::DepthStencilWrite };
-	constexpr ResourceState shadowDataRead{ PipelineStage::VertexShader, ResourceAccess::ShaderRead };
-    uses.push_back({resources.shadowTexture, shadowTextureWrite, TextureLayout::DepthStencilAttachment, RenderGraphAccess::Write});
-    uses.push_back({resources.shadowDataBuffer, shadowDataRead, TextureLayout::Undefined, RenderGraphAccess::Read});
-    graph.AddPass({.name = "RenderDirectionalShadowMaps", .resources = std::move(uses)},
-        [this, &resources, layers](CommandList& commands) {
             for (uint32_t cascade = 0; cascade < layers; ++cascade) {
 				commands.BeginDebugLabel(("ShadowMapCascade: " + std::to_string(cascade)).c_str());
                 commands.BeginRendering({

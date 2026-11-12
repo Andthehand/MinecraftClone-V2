@@ -20,13 +20,17 @@ void Renderer::BufferDataInitPass(RenderGraph& graph, FrameResources& resources)
 	constexpr ResourceState sunDataWrite{ PipelineStage::AllCommands, ResourceAccess::MemoryWrite };    
     graph.AddPass({
         .name = "InitializeBufferData",
-        .resources = {{resources.sunBuffer, sunDataWrite, TextureLayout::Undefined, RenderGraphAccess::Write},
-    }}, [&graph, &resources, sunData](CommandList& commands) {
-        auto* buffer = graph.GetBuffer(resources.sunBuffer);
+        .resources = {
+            {resources.sunBuffer, sunDataWrite, TextureLayout::Undefined, RenderGraphAccess::Write},
+            {resources.shadowDataBuffer, {PipelineStage::AllCommands, ResourceAccess::MemoryRead},
+                TextureLayout::Undefined, RenderGraphAccess::Read},
+    }}, [&resources, sunData](RenderGraphContext& context) {
+        auto& commands = context.GetCommands();
+        auto* buffer = context.GetBuffer(resources.sunBuffer);
         commands.UseResource(buffer);
 
         auto data = sunData;
-        data.shadowDataIndex = graph.GetBuffer(resources.shadowDataBuffer)->GetDescriptorIndex();
+        data.shadowDataIndex = context.GetBuffer(resources.shadowDataBuffer)->GetDescriptorIndex();
         if (buffer->WriteData(&data, sizeof(data)) != Result::Success) {
             std::cerr << "Failed to write sun lighting data.\n";
         }
