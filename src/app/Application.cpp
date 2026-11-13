@@ -9,7 +9,6 @@
 #include <glm/trigonometric.hpp>
 
 #include <chrono>
-#include <format>
 #include <iostream>
 #include <print>
 
@@ -81,6 +80,7 @@ bool Application::Initialize() {
         .title = Options::Application::NAME,
         .width = Options::Application::WINDOW_WIDTH,
         .height = Options::Application::WINDOW_HEIGHT,
+        .enableHighPixelDensity = true,
     };
     if (m_Device->CreateWindow(windowDesc, m_Window) != Result::Success) {
         std::cerr << "Failed to create window.\n";
@@ -96,9 +96,14 @@ bool Application::Initialize() {
         return false;
     }
 
-    UpdateWindowTitle();
     m_Renderer = std::make_unique<Renderer>(*m_Device, *m_Swapchain);
-    return m_Renderer->Initialize();
+    if (!m_Renderer->Initialize()) return false;
+    if (!m_DebugUI.Initialize(*m_Device, *m_Window)) {
+        std::cerr << "Failed to initialize debug UI.\n";
+        return false;
+    }
+
+    return true;
 }
 
 int Application::Run() {
@@ -118,7 +123,12 @@ int Application::Run() {
             const float deltaTime = std::chrono::duration<float>(currentFrameTime - previousFrameTime).count();
             previousFrameTime = currentFrameTime;
 
+            m_DebugUI.BeginFrame(m_Camera, *m_Renderer, m_SelectedBlock, m_LastFps);
             OnUpdate(deltaTime);
+            if (!m_DebugUI.EndFrame()) {
+                std::cerr << "Failed to render debug UI platform windows.\n";
+                return 1;
+            }
             if (!OnRender(deltaTime)) {
                 return 1;
             }
@@ -133,7 +143,11 @@ bool Application::ProcessEvents() {
     bool running = true;
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_EVENT_QUIT) {
+        m_DebugUI.ProcessEvent(event);
+        if (event.type == SDL_EVENT_KEY_DOWN &&
+            (!m_DebugUI.IsMainWindow(event.key.windowID) || m_DebugUI.WantsKeyboard())) continue;
+        if (event.type == SDL_EVENT_QUIT ||
+            (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && m_DebugUI.IsMainWindow(event.window.windowID))) {
             running = false;
         }
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_F3 && !event.key.repeat) {
@@ -151,28 +165,20 @@ bool Application::ProcessEvents() {
                     m_SelectedBlock = Blocks::Stone;   
                     break;
             }
-            UpdateWindowTitle();
         }
         if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN
+            && m_DebugUI.IsMainWindow(event.button.windowID) && !m_DebugUI.WantsMouse()
             && (event.button.button == SDL_BUTTON_LEFT || event.button.button == SDL_BUTTON_RIGHT)) {
-            int width = 0, height = 0;
+            uint32_t width = 0, height = 0;
             // Mouse coordinates and window size both use logical pixels, including on high-DPI displays.
-            if (auto* window = SDL_GetWindowFromID(event.button.windowID);
-                window && SDL_GetWindowSize(window, &width, &height)) {
-                EditBlock(event.button.x, event.button.y, width, height, event.button.button == SDL_BUTTON_RIGHT);
+            if (m_Window->GetSize(width, height) == Result::Success) {
+                EditBlock(event.button.x, event.button.y, static_cast<int>(width), static_cast<int>(height),
+                    event.button.button == SDL_BUTTON_RIGHT);
             }
         }
     }
 
     return running;
-}
-
-void Application::UpdateWindowTitle() {
-    const char* block = m_SelectedBlock == Blocks::Grass ? "Grass"
-        : m_SelectedBlock == Blocks::Dirt ? "Dirt" : "Stone";
-    
-    m_Window->SetTitle(std::format("{} | {:.0f} FPS | LMB: break | RMB: place {} | 1/2/3: block",
-        Options::Application::NAME, m_LastFps, block).c_str());
 }
 
 void Application::EditBlock(float mouseX, float mouseY, int windowWidth, int windowHeight, bool place) {
@@ -214,20 +220,23 @@ void Application::EditBlock(float mouseX, float mouseY, int windowWidth, int win
 
 void Application::OnUpdate(float deltaTime) {
     MC_PROFILE_ZONE("Update camera");
-    UpdateCameraFromKeyboard(m_Camera, deltaTime);
+    if (m_Window->HasInputFocus() && !m_DebugUI.WantsKeyboard()) {
+        UpdateCameraFromKeyboard(m_Camera, deltaTime);
+    }
 }
 
 bool Application::OnRender(float deltaTime) {
     MC_PROFILE_ZONE("Render frame");
+    if (m_Window->IsMinimized() || m_Window->GetWidth() == 0 || m_Window->GetHeight() == 0) {
+        const bool secondaryDrawable = m_DebugUI.HasVisibleSecondaryWindows();
+        if (!secondaryDrawable) {
+            SDL_Delay(Options::Application::MINIMIZED_FRAME_DELAY_MS);
+        }
+        m_FrameCounter.Reset();
+        return true;
+    }
     const FrameContext frame = m_Swapchain->BeginFrame();
     if (!frame.backBufferView) {
-        if (m_Window->IsMinimized() || m_Window->GetWidth() == 0 || m_Window->GetHeight() == 0) {
-            SDL_Delay(Options::Application::MINIMIZED_FRAME_DELAY_MS);
-            m_FrameCounter.Reset();
-
-            return true;
-        }
-
         std::cerr << "Failed to acquire a backbuffer.\n";
         return false;
     }
@@ -239,14 +248,12 @@ bool Application::OnRender(float deltaTime) {
         if (!m_Renderer->ApplyChunkUpdates(updates)) return false;
     }
 
-    if (!m_Renderer->DrawFrame(frame, m_Camera, m_World)) {
+    if (!m_Renderer->DrawFrame(frame, m_Camera, m_World, m_DebugUI)) {
         return false;
     }
 
     if (const auto fps = m_FrameCounter.CountFrame(deltaTime)) {
         m_LastFps = *fps;
-        UpdateWindowTitle();
     }
     return true;
 }
-

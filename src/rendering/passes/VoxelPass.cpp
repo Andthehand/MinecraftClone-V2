@@ -9,9 +9,8 @@ using namespace RealRHI;
 using namespace ShaderData;
 
 void Renderer::AddVoxelPass(RenderGraph& graph, FrameResources& resources,
-    const FrameContext& frame, const Camera& camera) {
+    const FrameContext& frame, const Camera& camera, RenderGraphResource backbuffer) {
     MC_PROFILE_ZONE("Build voxel pass");
-    const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
     const auto depth = graph.CreateTexture({
         .width = frame.width, .height = frame.height,
         .format = TextureFormat::D32_Float, 

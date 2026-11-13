@@ -5,12 +5,12 @@
 #include <memory>
 
 #include "rendering/Camera.h"
+#include "rendering/Renderer.h"
 #include "world/World.h"
 #include "world/Block.h"
 #include "world/ChunkStreamer.h"
 #include "diagnostics/FrameCounter.h"
-
-class Renderer;
+#include "diagnostics/DebugUI.h"
 
 class Application {
 public:
@@ -25,7 +25,6 @@ private:
     bool Initialize();
     bool ProcessEvents();
     void EditBlock(float mouseX, float mouseY, int windowWidth, int windowHeight, bool place);
-    void UpdateWindowTitle();
 
 private:
     // Keep the device alive until all graphics resources are released.
@@ -37,6 +36,7 @@ private:
     World m_World;
     ChunkStreamer m_ChunkStreamer;
     std::unique_ptr<Renderer> m_Renderer;
+    DebugUI m_DebugUI;
 
     FrameCounter m_FrameCounter;
     uint32_t m_SelectedBlock = Blocks::Grass;

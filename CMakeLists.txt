@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MinecraftClone VERSION 0.1.0 LANGUAGES CXX)
-
 include(FetchContent)
+
 option(MINECRAFT_ENABLE_TRACY "Profile MinecraftClone and RealRHI with Tracy" OFF)
+option(MINECRAFT_ENABLE_IMGUI "Include the ImGui debug interface" ON)
 
 # Create one client before RealRHI so game and RHI zones share a capture.
 if(MINECRAFT_ENABLE_TRACY)
@@ -40,6 +41,7 @@ if(NOT REALRHI_BUILD_VULKAN)
     message(FATAL_ERROR "MinecraftClone requires REALRHI_BUILD_VULKAN=ON.")
 endif()
 
+set(REALRHI_BUILD_IMGUI ${MINECRAFT_ENABLE_IMGUI})
 add_subdirectory(external/RealRHI)
 
 set(GLM_BUILD_LIBRARY OFF CACHE BOOL "Build the GLM library")
@@ -83,6 +85,7 @@ add_executable(MinecraftClone
     src/main.cpp
     src/app/Application.cpp
     src/app/CameraController.cpp
+    src/diagnostics/DebugUI.cpp
     src/diagnostics/FrameCounter.cpp
     src/rendering/Camera.cpp
     src/rendering/ChunkRenderCache.cpp
@@ -96,6 +99,11 @@ add_executable(MinecraftClone
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(MinecraftClone PRIVATE RealRHI MinecraftWorld MinecraftProfiling)
+target_compile_definitions(MinecraftClone PRIVATE MINECRAFT_ENABLE_IMGUI=$<BOOL:${MINECRAFT_ENABLE_IMGUI}>)
+if(MINECRAFT_ENABLE_IMGUI)
+    target_link_libraries(MinecraftClone PRIVATE RealRHIImGui)
+    realrhi_copy_imgui_shader(MinecraftClone)
+endif()
 
 add_custom_target(MinecraftCloneShaders
     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -104,6 +112,11 @@ add_custom_target(MinecraftCloneShaders
     COMMENT "Copying MinecraftClone shaders"
 )
 add_dependencies(MinecraftClone MinecraftCloneShaders)
+if(NOT MINECRAFT_ENABLE_IMGUI)
+    # Remove the owned shader if this build directory previously enabled ImGui.
+    add_custom_command(TARGET MinecraftCloneShaders POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -f "$<TARGET_FILE_DIR:MinecraftClone>/shaders/realrhi_imgui.slang")
+endif()
 
 foreach(target MinecraftWorld MinecraftClone)
     if(MSVC)

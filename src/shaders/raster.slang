@@ -130,7 +130,7 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float4 albedo = SampleVoxelAlbedo(input.uv, input.tile);
     float3 lighting = CalculateLighting(sun, input.worldPosition, input.normal, cameraDistance);
     // Strengthen contact shading in linear light; open faces stay at full brightness.
-    const float aoContrast = 3.0f;
+    const float aoContrast = 5.0f;
     float ambientOcclusion = pow(saturate(input.occlusion), aoContrast);
     float3 litColor = albedo.rgb * lighting * ambientOcclusion;
 

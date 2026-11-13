@@ -2,6 +2,7 @@
 #include "rendering/FrameResources.h"
 #include "rendering/VoxelTextures.h"
 #include "diagnostics/Profiling.h"
+#include "diagnostics/DebugUI.h"
 #include <iostream>
 
 using namespace RealRHI;
@@ -91,7 +92,7 @@ bool Renderer::CreateSkyShader() {
     return true;
 }
 
-bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const World& world) {
+bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const World& world, DebugUI& ui) {
     MC_PROFILE_ZONE("Draw frame");
     RenderGraph graph;
     FrameResources resources {
@@ -106,13 +107,21 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const 
     CollectVisibleChunks(graph, resources, world, player, camera);
     AddShadowMapPasses(graph, resources);
     BufferDataInitPass(graph, resources);
-    AddVoxelPass(graph, resources, frame, camera);
+    const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
+    AddVoxelPass(graph, resources, frame, camera, backbuffer);
+    if (!ui.AddRenderPass(graph, backbuffer, frame, m_Swapchain.GetBackBufferFormat())) {
+        std::cerr << "Failed to prepare debug UI rendering.\n";
+        return false;
+    }
 
     RenderGraphSubmission submission;
     if (graph.Submit(m_Device, submission, m_Pool.get()) != Result::Success) {
         std::cerr << "Raster render graph submission failed.\n";
         return false;
     }
-
+    if (!ui.RenderSucceeded()) {
+        std::cerr << "Debug UI rendering failed.\n";
+        return false;
+    }
     return true;
 }

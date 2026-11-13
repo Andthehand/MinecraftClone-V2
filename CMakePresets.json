@@ -16,21 +16,21 @@
       "environment": { "PATH": "$penv{VULKAN_SDK}/Bin;$penv{PATH}" }
     },
     {
-      "name": "windows-debug",
-      "displayName": "Windows x64 Debug",
+      "name": "windows-release",
+      "displayName": "Windows x64 Release without ImGui",
       "inherits": "windows-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "MINECRAFT_ENABLE_IMGUI": "OFF" }
     },
     {
-      "name": "windows-release",
-      "displayName": "Windows x64 Release with debug symbols",
+      "name": "windows-dev",
+      "displayName": "Windows x64 Development with ImGui and debug symbols",
       "inherits": "windows-base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "MINECRAFT_ENABLE_IMGUI": "ON" }
     },
     {
       "name": "windows-profile",
-      "displayName": "Windows x64 Release with Tracy",
-      "inherits": "windows-release",
+      "displayName": "Windows x64 Development with Tracy",
+      "inherits": "windows-dev",
       "cacheVariables": {
         "MINECRAFT_ENABLE_TRACY": "ON",
         "TRACY_NO_CODE_TRANSFER": "OFF"
@@ -38,8 +38,8 @@
     }
   ],
   "buildPresets": [
-    { "name": "windows-debug", "configurePreset": "windows-debug", "targets": ["MinecraftClone"] },
     { "name": "windows-release", "configurePreset": "windows-release", "targets": ["MinecraftClone"] },
+    { "name": "windows-dev", "configurePreset": "windows-dev", "targets": ["MinecraftClone"] },
     { "name": "windows-profile", "configurePreset": "windows-profile", "targets": ["MinecraftClone"] }
   ]
 }
