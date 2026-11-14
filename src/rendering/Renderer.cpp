@@ -30,7 +30,7 @@ bool Renderer::Initialize() {
         std::cerr << "Failed to create voxel textures.\n";
         return false;
     }
-    if (!CreateVoxelShader() || !CreateSkyShader() || !CreateShadowShader()) {
+    if (!CreateVoxelShader() || !CreateSkyShader() || !CreateShadowShader() || !m_TextRenderer.Initialize(device)) {
         return false;
     }
 
@@ -92,7 +92,7 @@ bool Renderer::CreateSkyShader() {
     return true;
 }
 
-bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const World& world, DebugUI& ui) {
+bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const World& world, const TextBatch& text, DebugUI& ui) {
     MC_PROFILE_ZONE("Draw frame");
     RenderGraph graph;
     FrameResources resources {
@@ -109,6 +109,10 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const 
     BufferDataInitPass(graph, resources);
     const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
     AddVoxelPass(graph, resources, frame, camera, backbuffer);
+    if (!m_TextRenderer.AddRenderPass(m_Device, graph, backbuffer, frame, m_Swapchain.GetBackBufferFormat(), text)) {
+        std::cerr << "Failed to prepare text rendering.\n";
+        return false;
+    }
     if (!ui.AddRenderPass(graph, backbuffer, frame, m_Swapchain.GetBackBufferFormat())) {
         std::cerr << "Failed to prepare debug UI rendering.\n";
         return false;
@@ -119,9 +123,6 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const 
         std::cerr << "Raster render graph submission failed.\n";
         return false;
     }
-    if (!ui.RenderSucceeded()) {
-        std::cerr << "Debug UI rendering failed.\n";
-        return false;
-    }
+
     return true;
 }

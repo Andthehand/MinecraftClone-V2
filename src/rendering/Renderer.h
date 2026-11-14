@@ -8,6 +8,7 @@
 #include "rendering/Sun.h"
 #include "world/World.h"
 #include "rendering/ChunkRenderCache.h"
+#include "rendering/TextRenderer.h"
 
 class DebugUI;
 
@@ -17,7 +18,8 @@ public:
     ~Renderer() = default;
 
     bool Initialize();
-    bool DrawFrame(const RealRHI::FrameContext& frameContext, const Camera& camera, const World& world, DebugUI& ui);
+    bool DrawFrame(const RealRHI::FrameContext& frameContext, const Camera& camera, const World& world,
+        const TextBatch& text, DebugUI& ui);
     bool ApplyChunkUpdates(const ChunkUpdates& updates) { return m_ChunkCache.Apply(updates); }
     void ToggleWireframe() { m_WireframeEnabled = !m_WireframeEnabled; }
     bool IsWireframeEnabled() const { return m_WireframeEnabled; }
@@ -50,4 +52,5 @@ private:
     Sun m_Sun;
 
     ChunkRenderCache m_ChunkCache;
+    TextRenderer m_TextRenderer;
 };

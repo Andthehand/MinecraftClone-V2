@@ -1,5 +1,6 @@
 #include "app/Application.h"
 #include "app/CameraController.h"
+
 #include "config/Settings.h"
 #include "rendering/Renderer.h"
 #include "diagnostics/Profiling.h"
@@ -9,8 +10,11 @@
 #include <glm/trigonometric.hpp>
 
 #include <chrono>
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <print>
+#include <string>
 
 using namespace RealRHI;
 
@@ -248,7 +252,15 @@ bool Application::OnRender(float deltaTime) {
         if (!m_Renderer->ApplyChunkUpdates(updates)) return false;
     }
 
-    if (!m_Renderer->DrawFrame(frame, m_Camera, m_World, m_DebugUI)) {
+    TextBatch text;
+    const int textScale = std::max(1, static_cast<int>(std::round(m_Window->GetDisplayScale() * 2)));
+    const char* blockName = m_SelectedBlock == Blocks::Grass ? "Grass" : m_SelectedBlock == Blocks::Dirt ? "Dirt" : "Stone";
+    const std::string label = std::string("Selected: ") + blockName + "  [1-3]";
+    const auto labelSize = TextBatch::MeasureText(label, textScale);
+    text.DrawText(label, {std::round((float(frame.width) - labelSize.x) * 0.5f),
+        float(frame.height) - labelSize.y - 12 * textScale}, textScale);
+
+    if (!m_Renderer->DrawFrame(frame, m_Camera, m_World, text, m_DebugUI)) {
         return false;
     }
 

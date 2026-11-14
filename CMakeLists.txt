@@ -90,6 +90,8 @@ add_executable(MinecraftClone
     src/rendering/Camera.cpp
     src/rendering/ChunkRenderCache.cpp
     src/rendering/Renderer.cpp
+    src/rendering/TextRenderer.cpp
+    src/rendering/TextBatch.cpp
     src/rendering/Sun.cpp
     src/rendering/Visibility.cpp
     src/rendering/passes/LightingPass.cpp
