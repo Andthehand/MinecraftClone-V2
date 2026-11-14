@@ -1,18 +1,12 @@
 #pragma once
 
 #include "world/Block.h"
+#include "world/BlockRegistry.h"
 
 // CPU face-to-atlas mapping; independent of graphics resources.
 namespace BlockFaces {
-enum Tile : uint32_t { GrassTop, GrassSide, Dirt, Stone };
-
-// Unknown solid materials use stone until they receive their own texture.
-constexpr Tile FaceTile(uint32_t material, int axis, int sign) {
-    if (material == Blocks::Grass) {
-        return axis == 1 ? (sign > 0 ? GrassTop : Dirt) : GrassSide;
-    }
-
-    return material == Blocks::Dirt ? Dirt : Stone;
+inline uint32_t FaceTile(uint32_t material, int axis, int sign) {
+    return Blocks::Registry().Get(material).faceTiles[axis * 2 + (sign > 0 ? 1 : 0)];
 }
 
 } // namespace BlockFaces

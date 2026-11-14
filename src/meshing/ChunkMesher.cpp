@@ -48,7 +48,7 @@ void AddChunkQuad(ChunkMesh& mesh, glm::ivec3 cell, int axis, int sign, int widt
 struct MeshScratch {
     std::vector<uint32_t> voxels;
     std::vector<uint8_t> solid;
-    std::vector<uint32_t> mask;
+    std::vector<uint64_t> mask;
 };
 } // namespace
 
@@ -234,8 +234,8 @@ ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbo
                         const bool exposed = !solid[cellIndex + sign * steps[axis]];
                         hasFaces |= exposed;
                         mask[static_cast<size_t>(j) * size + i] =
-                            exposed ? (BlockFaces::FaceTile(material, axis, sign) + 1) |
-                                          (faceAO(cellIndex, axis, sign) << 8)
+                            exposed ? (uint64_t(BlockFaces::FaceTile(material, axis, sign)) + 1) |
+                                          (uint64_t(faceAO(cellIndex, axis, sign)) << 32)
                                     : 0;
                     }
                 }
@@ -253,7 +253,7 @@ ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbo
                             continue;
                         }
 
-                        const uint32_t ao = tile >> 8;
+                        const uint32_t ao = static_cast<uint32_t>(tile >> 32);
                         // Only constant AO can be merged without losing interior shading.
                         const bool mergeable = ao == (ao & 3u) * 85u;
                         int width = 1;
@@ -284,7 +284,7 @@ ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbo
                         cell[axis] = slice;
                         cell[u] = i;
                         cell[v] = j;
-                        AddChunkQuad(mesh, cell, axis, sign, width, height, (tile & 255u) - 1, ao);
+                        AddChunkQuad(mesh, cell, axis, sign, width, height, static_cast<uint32_t>(tile) - 1, ao);
 
                         for (int row = 0; row < height; ++row) {
                             for (int col = 0; col < width; ++col) {

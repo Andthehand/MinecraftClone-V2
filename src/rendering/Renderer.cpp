@@ -14,19 +14,26 @@ Renderer::Renderer(Device& device, Swapchain& swapchain)
 bool Renderer::Initialize() {
     auto& device = m_Device;
     MC_PROFILE_ZONE("Renderer initialization");
-    const auto pixels = VoxelTextures::BuildAtlas();
+    const auto& blocks = Blocks::Registry();
+    auto pixels = VoxelTextures::BuildAtlas(blocks);
+
+    if (!pixels) {
+        std::cerr << "Failed to load voxel textures: " << pixels.error() << '\n';
+
+        return false;
+    }
 
     if (device.CreateTexture(
             {
-                .width = VoxelTextures::WIDTH,
-                .height = VoxelTextures::HEIGHT,
+                .width = VoxelTextures::TILE_SIZE * static_cast<uint32_t>(blocks.Textures().size()),
+                .height = VoxelTextures::TILE_SIZE,
                 // Atlas bytes are display colors; decode them before lighting.
                 .format = TextureFormat::RGBA8_SRGB,
                 .usage = TextureUsage::ShaderResource | TextureUsage::TransferDst,
                 .debugName = "VoxelAtlas",
             },
             m_VoxelAtlas) != Result::Success ||
-        m_VoxelAtlas->UploadData(pixels.data(), static_cast<uint32_t>(pixels.size())) != Result::Success ||
+        m_VoxelAtlas->UploadData(pixels->data(), static_cast<uint32_t>(pixels->size())) != Result::Success ||
         device.CreateSampler(
             {
                 .minFilter = Filter::Nearest,

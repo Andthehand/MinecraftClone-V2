@@ -3,6 +3,7 @@
 #include "config/Settings.h"
 #include "rendering/Renderer.h"
 #include "diagnostics/Profiling.h"
+#include "world/BlockRegistry.h"
 
 #include <SDL3/SDL.h>
 #include <glm/common.hpp>
@@ -82,6 +83,22 @@ Application::~Application() {
 
 bool Application::Initialize() {
     MC_PROFILE_ZONE("Application initialization");
+
+    // Resolve content beside the executable, regardless of the launch working directory.
+    const char* base = SDL_GetBasePath();
+    if (!base) {
+        std::cerr << "Failed to locate application directory: " << SDL_GetError() << '\n';
+
+        return false;
+    }
+
+    const auto blocks = Blocks::Initialize(std::filesystem::path(base) / "assets");
+    if (!blocks) {
+        std::cerr << "Failed to load block definitions: " << blocks.error() << '\n';
+
+        return false;
+    }
+
     const DeviceDesc deviceDesc{
         .applicationName = Options::Application::NAME,
         .shaderDirectory = Options::Application::SHADER_DIRECTORY,
@@ -198,16 +215,11 @@ bool Application::ProcessEvents() {
         }
 
         if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
-            switch (event.key.scancode) {
-            case SDL_SCANCODE_1:
-                m_SelectedBlock = Blocks::Grass;
-                break;
-            case SDL_SCANCODE_2:
-                m_SelectedBlock = Blocks::Dirt;
-                break;
-            case SDL_SCANCODE_3:
-                m_SelectedBlock = Blocks::Stone;
-                break;
+            if (event.key.scancode >= SDL_SCANCODE_1 && event.key.scancode <= SDL_SCANCODE_9) {
+                const auto id = static_cast<uint32_t>(event.key.scancode - SDL_SCANCODE_1 + 1);
+                if (id < Blocks::Registry().All().size()) {
+                    m_SelectedBlock = id;
+                }
             }
         }
 
@@ -291,10 +303,10 @@ bool Application::OnRender(float deltaTime) {
 
     TextBatch text;
     const int textScale = std::max(1, static_cast<int>(std::round(m_Window->GetDisplayScale() * 2)));
-    const char* blockName = m_SelectedBlock == Blocks::Grass  ? "Grass"
-                            : m_SelectedBlock == Blocks::Dirt ? "Dirt"
-                                                              : "Stone";
-    const std::string label = std::string("Selected: ") + blockName + "  [1-3]";
+    const auto& blocks = Blocks::Registry();
+    const auto shortcuts = std::min(size_t{9}, blocks.All().size() - 1);
+    const std::string label =
+        "Selected: " + blocks.Get(m_SelectedBlock).name + "  [1-" + std::to_string(shortcuts) + "]";
     const auto labelSize = TextBatch::MeasureText(label, textScale);
     text.DrawText(
         label,

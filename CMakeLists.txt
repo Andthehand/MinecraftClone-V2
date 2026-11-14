@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(MinecraftClone VERSION 0.1.0 LANGUAGES CXX)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
+    message(FATAL_ERROR "Use a separate build directory (for example, a CMake preset).")
+endif()
 include(FetchContent)
 
 option(MINECRAFT_ENABLE_TRACY "Profile MinecraftClone and RealRHI with Tracy" OFF)
@@ -68,6 +71,31 @@ FetchContent_Declare(FastNoise2
 )
 FetchContent_MakeAvailable(FastNoise2)
 
+set(JSON_BuildTests OFF CACHE INTERNAL "Disable nlohmann/json tests")
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.12.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
+FetchContent_Declare(stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG f0569113c93ad095470c54bf34a17b36646bbbb5
+)
+FetchContent_MakeAvailable(stb)
+
+add_library(MinecraftBlocks STATIC src/world/BlockRegistry.cpp)
+target_include_directories(MinecraftBlocks PUBLIC src)
+target_compile_features(MinecraftBlocks PUBLIC cxx_std_23)
+target_link_libraries(MinecraftBlocks PRIVATE nlohmann_json::nlohmann_json)
+target_compile_definitions(MinecraftBlocks PRIVATE JSON_NOEXCEPTION=1)
+
+add_library(MinecraftVoxelTextures STATIC src/rendering/VoxelTextures.cpp)
+target_include_directories(MinecraftVoxelTextures SYSTEM PRIVATE ${stb_SOURCE_DIR})
+target_link_libraries(MinecraftVoxelTextures PUBLIC MinecraftBlocks)
+set_target_properties(MinecraftBlocks MinecraftVoxelTextures PROPERTIES CXX_EXTENSIONS OFF)
+
 # CPU world and meshing code has no RealRHI or SDL dependency.
 add_library(MinecraftWorld STATIC
     src/world/Octree.cpp
@@ -85,7 +113,7 @@ add_library(MinecraftWorld STATIC
 target_include_directories(MinecraftWorld PUBLIC src)
 target_compile_features(MinecraftWorld PUBLIC cxx_std_23)
 set_target_properties(MinecraftWorld PROPERTIES CXX_EXTENSIONS OFF)
-target_link_libraries(MinecraftWorld PUBLIC glm::glm FastNoise PRIVATE MinecraftProfiling)
+target_link_libraries(MinecraftWorld PUBLIC glm::glm FastNoise MinecraftBlocks PRIVATE MinecraftProfiling)
 
 # Gameplay is CPU-only; input collection and camera synchronization live in the app.
 add_library(MinecraftGame STATIC
@@ -114,7 +142,7 @@ add_executable(MinecraftClone
 )
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
-target_link_libraries(MinecraftClone PRIVATE RealRHI MinecraftGame MinecraftProfiling)
+target_link_libraries(MinecraftClone PRIVATE RealRHI MinecraftGame MinecraftProfiling MinecraftVoxelTextures)
 target_compile_definitions(MinecraftClone PRIVATE MINECRAFT_ENABLE_IMGUI=$<BOOL:${MINECRAFT_ENABLE_IMGUI}>)
 if(MINECRAFT_ENABLE_IMGUI)
     target_link_libraries(MinecraftClone PRIVATE RealRHIImGui)
@@ -128,13 +156,32 @@ add_custom_target(MinecraftCloneShaders
     COMMENT "Copying MinecraftClone shaders"
 )
 add_dependencies(MinecraftClone MinecraftCloneShaders)
+
+# Run on every build so edits and removed block files reach the executable without relinking.
+add_custom_target(MinecraftCloneAssets
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:MinecraftClone>/assets"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:MinecraftClone>/assets"
+    COMMENT "Copying MinecraftClone block assets"
+)
+add_dependencies(MinecraftClone MinecraftCloneAssets)
+
+option(MINECRAFT_BUILD_TESTS "Build CPU block registry and meshing tests" OFF)
+if(MINECRAFT_BUILD_TESTS)
+    enable_testing()
+    add_executable(MinecraftBlockTests tests/BlockRegistryTests.cpp)
+    target_link_libraries(MinecraftBlockTests PRIVATE MinecraftWorld MinecraftVoxelTextures nlohmann_json::nlohmann_json)
+    target_compile_definitions(MinecraftBlockTests PRIVATE JSON_NOEXCEPTION=1)
+    add_test(NAME MinecraftBlockTests COMMAND MinecraftBlockTests "${CMAKE_CURRENT_SOURCE_DIR}/assets")
+endif()
 if(NOT MINECRAFT_ENABLE_IMGUI)
     # Remove the owned shader if this build directory previously enabled ImGui.
     add_custom_command(TARGET MinecraftCloneShaders POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rm -f "$<TARGET_FILE_DIR:MinecraftClone>/shaders/realrhi_imgui.slang")
 endif()
 
-foreach(target MinecraftWorld MinecraftClone)
+foreach(target MinecraftBlocks MinecraftWorld MinecraftClone)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive-)
     else()

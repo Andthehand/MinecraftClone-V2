@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "textures": {
+    "core:grass_top": { "color": [82, 146, 58] },
+    "core:grass_side": { "color": [126, 86, 54], "edge_color": [82, 146, 58] },
+    "core:dirt": { "color": [126, 86, 54] },
+    "core:stone": { "color": [128, 130, 133] }
+  }
+}

@@ -3,6 +3,7 @@
 #if MINECRAFT_ENABLE_IMGUI
 
 #include "world/Block.h"
+#include "world/BlockRegistry.h"
 
 #include <ImGui/ImGuiRenderer.h>
 #include <SDL3/SDL.h>
@@ -114,10 +115,20 @@ void DebugUI::BeginFrame(const Camera& camera, Renderer& renderer, uint32_t& sel
             renderer.ToggleWireframe();
         }
 
-        int block = selectedBlock == Blocks::Grass ? 0 : selectedBlock == Blocks::Dirt ? 1 : 2;
-
-        if (ImGui::Combo("Block", &block, "Grass\0Dirt\0Stone\0")) {
-            selectedBlock = block == 0 ? Blocks::Grass : block == 1 ? Blocks::Dirt : Blocks::Stone;
+        const auto& blocks = Blocks::Registry();
+        if (ImGui::BeginCombo("Block", blocks.Get(selectedBlock).name.c_str())) {
+            for (uint32_t id = 1; id < blocks.All().size(); ++id) {
+                const bool selected = selectedBlock == id;
+                ImGui::PushID(static_cast<int>(id));
+                if (ImGui::Selectable(blocks.Get(id).name.c_str(), selected)) {
+                    selectedBlock = id;
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
         }
 
         ImGui::Checkbox("Show ImGui demo", &m_State->showDemo);

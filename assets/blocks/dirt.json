@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "id": "core:dirt",
+  "name": "Dirt",
+  "textures": { "all": "core:dirt" }
+}
