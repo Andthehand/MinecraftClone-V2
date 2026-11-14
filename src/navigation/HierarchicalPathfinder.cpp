@@ -31,16 +31,18 @@ struct HierarchyQueueEntry {
     }
 };
 
-void ReconstructHierarchyPath(BlockPosition start, BlockPosition goal,
-                              const PositionMap<HierarchyRecord>& records, PathResult& result) {
+void ReconstructHierarchyPath(BlockPosition start, BlockPosition goal, const PositionMap<HierarchyRecord>& records,
+                              PathResult& result) {
     MC_PROFILE_ZONE("Reconstruct navigation path");
 
     std::vector<std::vector<BlockPosition>> segments;
 
     for (auto position = goal; position != start;) {
         const auto entry = records.find(position);
+
         if (entry == records.end() || segments.size() >= records.size()) {
             result.status = PathStatus::InvalidState;
+
             return;
         }
 
@@ -48,8 +50,7 @@ void ReconstructHierarchyPath(BlockPosition start, BlockPosition goal,
         std::vector<BlockPosition> segment;
 
         for (int node = record.endNodeIndex; node >= 0; node = record.tree->parentNodeIndex[node]) {
-            segment.push_back(
-                PositionFromCellIndex(record.region->nodes[node].cellIndex, record.region->coordinates));
+            segment.push_back(PositionFromCellIndex(record.region->nodes[node].cellIndex, record.region->coordinates));
         }
 
         std::reverse(segment.begin(), segment.end());
@@ -86,16 +87,20 @@ PathResult HierarchicalPathfinder::FindPath(BlockPosition start, BlockPosition g
 
     if (!m_Movement.IsValid()) {
         result.status = PathStatus::InvalidAgent;
+
         return result;
     }
 
-	// Check if the start and goal positions are valid for the agent
+    // Check if the start and goal positions are valid for the agent
     if (!m_Movement.CanStand(m_World, start)) {
         result.status = PathStatus::InvalidStart;
+
         return result;
     }
+
     if (!m_Movement.CanStand(m_World, goal)) {
         result.status = PathStatus::InvalidGoal;
+
         return result;
     }
 
@@ -109,6 +114,7 @@ PathResult HierarchicalPathfinder::FindPath(BlockPosition start, BlockPosition g
     while (!open.empty()) {
         if (budget.HasTimeLimitExpired()) {
             result.status = PathStatus::BudgetExceeded;
+
             return result;
         }
 
@@ -117,8 +123,10 @@ PathResult HierarchicalPathfinder::FindPath(BlockPosition start, BlockPosition g
         open.pop();
 
         const auto currentRecord = records.find(current.position);
+
         if (currentRecord == records.end()) {
             result.status = PathStatus::InvalidState;
+
             return result;
         }
 
@@ -126,19 +134,20 @@ PathResult HierarchicalPathfinder::FindPath(BlockPosition start, BlockPosition g
             continue;
         }
 
-		// Goal reached; reconstruct the path from the records.
+        // Goal reached; reconstruct the path from the records.
         if (current.position == goal) {
             ReconstructHierarchyPath(start, goal, records, result);
+
             return result;
         }
 
         if (!budget.TrySpendNode()) {
             result.status = PathStatus::BudgetExceeded;
+
             return result;
         }
 
-        const auto relax = [&](BlockPosition destination, int cost,
-                               std::shared_ptr<const NavigationRegion> region,
+        const auto relax = [&](BlockPosition destination, int cost, std::shared_ptr<const NavigationRegion> region,
                                std::shared_ptr<const RegionSearchTree> tree, int endNodeIndex,
                                bool crossesRegionBoundary = false) {
             const int candidate = current.costFromStart + cost;
@@ -166,15 +175,16 @@ PathResult HierarchicalPathfinder::FindPath(BlockPosition start, BlockPosition g
 
         if (!region || !m_Cache.EnsureEntrances(*region, query, budget)) {
             result.status = PathStatus::BudgetExceeded;
+
             return result;
         }
 
-        const int sourceNodeIndex =
-            region->nodeIndexAtCell[LocalCellIndex(current.position, region->coordinates)];
+        const int sourceNodeIndex = region->nodeIndexAtCell[LocalCellIndex(current.position, region->coordinates)];
         const auto tree = m_Cache.GetOrCreateSearchTree(*region, sourceNodeIndex, budget);
 
         if (!tree) {
             result.status = PathStatus::BudgetExceeded;
+
             return result;
         }
 
@@ -188,13 +198,14 @@ PathResult HierarchicalPathfinder::FindPath(BlockPosition start, BlockPosition g
 
         for (const auto& entrance : region->entrances) {
             if (tree->costFromSource[entrance.sourceNodeIndex] != Infinity) {
-                relax(entrance.target, tree->costFromSource[entrance.sourceNodeIndex] + entrance.cost, region,
-                      tree, entrance.sourceNodeIndex, true);
+                relax(entrance.target, tree->costFromSource[entrance.sourceNodeIndex] + entrance.cost, region, tree,
+                      entrance.sourceNodeIndex, true);
             }
         }
     }
 
     result.status = PathStatus::NoPath;
+
     return result;
 }
 

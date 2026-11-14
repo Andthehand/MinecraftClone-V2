@@ -10,11 +10,13 @@ struct Renderer::FrameResources {
         ChunkCoord coord;
         ChunkRenderMesh* chunk;
     };
+
     struct ShadowVisibleChunk {
         ChunkCoord coord;
         ChunkRenderMesh* chunk;
         uint32_t cascadeMask; // Bit i marks visibility in cascade i.
     };
+
     std::vector<VisibleChunk> visibleChunks;
     std::vector<ShadowVisibleChunk> shadowVisibleChunks;
     std::vector<RealRHI::RenderGraphUse> geometryResourceUses;
@@ -28,4 +30,3 @@ struct Renderer::FrameResources {
     RealRHI::Ref<RealRHI::TextureView> sampledShadowView;
     std::array<RealRHI::Ref<RealRHI::TextureView>, 3> shadowDepthViews;
 };
-

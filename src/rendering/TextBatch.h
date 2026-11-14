@@ -20,10 +20,11 @@ class TextBatch {
 public:
     static glm::ivec2 MeasureText(std::string_view text, int scale = 2);
 
-    void DrawText(std::string_view text, glm::vec2 position, int scale = 2,
-        glm::vec4 color = glm::vec4(1), bool shadow = true);
+    void DrawText(std::string_view text, glm::vec2 position, int scale = 2, glm::vec4 color = glm::vec4(1),
+                  bool shadow = true);
 
     void Clear() { m_Vertices.clear(); }
+
     const std::vector<TextVertex>& Vertices() const { return m_Vertices; }
 
 private:

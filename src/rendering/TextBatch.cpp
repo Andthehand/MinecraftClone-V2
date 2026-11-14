@@ -6,8 +6,7 @@
 
 namespace {
 // Layout and measurement deliberately share this traversal.
-template<class Emit>
-glm::ivec2 Layout(std::string_view text, int scale, Emit emit) {
+template <class Emit> glm::ivec2 Layout(std::string_view text, int scale, Emit emit) {
     if (text.empty() || scale <= 0) {
         return {};
     }
@@ -17,23 +16,24 @@ glm::ivec2 Layout(std::string_view text, int scale, Emit emit) {
     for (size_t i = 0; i < text.size(); ++i) {
         unsigned char ch = static_cast<unsigned char>(text[i]);
 
-		// Handle control characters and whitespace.
+        // Handle control characters and whitespace.
         switch (ch) {
-            case '\r': {
-                continue;
-            }
-            case '\n': {
-                width = std::max(width, x);
-                x = 0;
-                y += BitmapFont::LINE_HEIGHT;
+        case '\r': {
+            continue;
+        }
 
-                continue;
-            }
-			case '\t': {
-				x = (x / (4 * BitmapFont::ADVANCE) + 1) * 4 * BitmapFont::ADVANCE;
-				continue;
-			}
+        case '\n': {
+            width = std::max(width, x);
+            x = 0;
+            y += BitmapFont::LINE_HEIGHT;
 
+            continue;
+        }
+
+        case '\t': {
+            x = (x / (4 * BitmapFont::ADVANCE) + 1) * 4 * BitmapFont::ADVANCE;
+            continue;
+        }
         }
 
         if (ch < BitmapFont::ASCII_START || ch > BitmapFont::ASCII_END) {
@@ -57,7 +57,7 @@ glm::ivec2 Layout(std::string_view text, int scale, Emit emit) {
     // Advance-box measurement includes trailing spaces, useful for consistent alignment.
     return {std::max(width, x) * scale, (y + BitmapFont::LINE_HEIGHT) * scale};
 }
-}
+} // namespace
 
 glm::ivec2 TextBatch::MeasureText(std::string_view text, int scale) {
     return Layout(text, scale, [](int, int, int) {});
@@ -75,12 +75,12 @@ void TextBatch::DrawText(std::string_view text, glm::vec2 position, int scale, g
             const glm::vec2 p = origin + glm::vec2(x, y);
             const glm::vec2 size(BitmapFont::GLYPH_WIDTH * scale, BitmapFont::GLYPH_HEIGHT * scale);
 
-            const glm::vec2 uv(float(glyph % 16 * 8) / BitmapFont::WIDTH,
-                float(glyph / 16 * 8) / BitmapFont::HEIGHT);
+            const glm::vec2 uv(float(glyph % 16 * 8) / BitmapFont::WIDTH, float(glyph / 16 * 8) / BitmapFont::HEIGHT);
             const glm::vec2 uvSize(float(BitmapFont::GLYPH_WIDTH) / BitmapFont::WIDTH,
-                float(BitmapFont::GLYPH_HEIGHT) / BitmapFont::HEIGHT);
+                                   float(BitmapFont::GLYPH_HEIGHT) / BitmapFont::HEIGHT);
 
             constexpr glm::vec2 corners[] = {{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}};
+
             for (auto corner : corners) {
                 m_Vertices.push_back({p + corner * size, uv + corner * uvSize, tint});
             }

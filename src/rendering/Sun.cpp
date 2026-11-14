@@ -14,8 +14,8 @@ Sun::Sun() {
 
 glm::vec3 Sun::GetDirection() const {
     const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - m_StartTime).count();
-    const float angle = glm::radians(float(360.0 * std::fmod(elapsed, Options::Rendering::SUN_ORBIT_PERIOD_SECONDS)
-        / Options::Rendering::SUN_ORBIT_PERIOD_SECONDS));
+    const float angle = glm::radians(float(360.0 * std::fmod(elapsed, Options::Rendering::SUN_ORBIT_PERIOD_SECONDS) /
+                                           Options::Rendering::SUN_ORBIT_PERIOD_SECONDS));
     const glm::vec3 initial = glm::normalize(Options::Rendering::INITIAL_SUN_DIRECTION);
 
     return glm::normalize(glm::vec3(glm::rotate(glm::mat4(1), angle, m_OrbitAxis) * glm::vec4(initial, 0)));

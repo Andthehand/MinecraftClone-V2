@@ -19,6 +19,7 @@ void AssignStrongComponents(NavigationRegion& region) {
     for (int sourceIndex = 0; sourceIndex < int(nodeCount); ++sourceIndex) {
         for (int edgeIndex = 0; edgeIndex < region.nodes[sourceIndex].edgeCount; ++edgeIndex) {
             const int destinationIndex = region.nodes[sourceIndex].edges[edgeIndex].targetNodeIndex;
+
             if (destinationIndex >= 0) {
                 incomingEdges[destinationIndex].push_back(sourceIndex);
             }
@@ -44,6 +45,7 @@ void AssignStrongComponents(NavigationRegion& region) {
             }
 
             const int destinationIndex = sourceNode.edges[nextEdgeIndex++].targetNodeIndex;
+
             if (destinationIndex < 0 || visitedNodes[destinationIndex]) {
                 continue;
             }
@@ -96,28 +98,21 @@ struct RegionGraph::VoxelSamples {
     int maximumY;
     std::vector<uint8_t> voxels;
 
-    VoxelSamples(BlockPosition position, int minY, int maxY)
-        : origin(position), minimumY(minY), maximumY(maxY) {}
+    VoxelSamples(BlockPosition position, int minY, int maxY) : origin(position), minimumY(minY), maximumY(maxY) {}
 
-    int Height() const {
-        return maximumY - minimumY;
-    }
+    int Height() const { return maximumY - minimumY; }
 
     size_t Index(BlockPosition localPosition) const {
         return ((localPosition.z + 1) * Height() + localPosition.y - minimumY) * Side + localPosition.x + 1;
     }
 
-    bool IsAir(BlockPosition position) const {
-        return voxels[Index(position)] == Air;
-    }
+    bool IsAir(BlockPosition position) const { return voxels[Index(position)] == Air; }
 
-    bool IsSolid(BlockPosition position) const {
-        return voxels[Index(position)] == Solid;
-    }
+    bool IsSolid(BlockPosition position) const { return voxels[Index(position)] == Solid; }
 };
 
 bool RegionGraph::SampleRegionVoxels(VoxelSamples& samples, SearchBudget& budget,
-                                    const SnapshotLookup& findSnapshot) const {
+                                     const SnapshotLookup& findSnapshot) const {
     const BlockPosition origin = samples.origin;
 
     // Sample a voxel halo once. Subsequent searches use cached adjacency,
@@ -140,10 +135,11 @@ bool RegionGraph::SampleRegionVoxels(VoxelSamples& samples, SearchBudget& budget
 
     const auto chunkSlot = [&](BlockPosition chunk) {
         const auto difference = chunk - baseChunk + BlockPosition(1);
+
         return (difference.z * 3 + difference.y) * 3 + difference.x;
     };
 
-	// Sample all chunks in the region and its immediate neighbors.
+    // Sample all chunks in the region and its immediate neighbors.
     for (int z = first.z; z <= last.z; ++z) {
         for (int y = first.y; y <= last.y; ++y) {
             for (int x = first.x; x <= last.x; ++x) {
@@ -159,6 +155,7 @@ bool RegionGraph::SampleRegionVoxels(VoxelSamples& samples, SearchBudget& budget
     }
 
     samples.voxels.resize(side * sizeY * side);
+
     for (int z = -1; z <= ClusterSide; ++z) {
         for (int y = minY; y < maxY; ++y) {
             for (int x = -1; x <= ClusterSide; ++x) {
@@ -182,11 +179,12 @@ bool RegionGraph::SampleRegionVoxels(VoxelSamples& samples, SearchBudget& budget
             }
         }
     }
+
     return true;
 }
 
 bool RegionGraph::CollectWalkableNodes(NavigationRegion& region, const VoxelSamples& samples,
-                                      SearchBudget& budget) const {
+                                       SearchBudget& budget) const {
     const auto air = [&](BlockPosition position) { return samples.IsAir(position); };
     const auto solid = [&](BlockPosition position) { return samples.IsSolid(position); };
 
@@ -196,6 +194,7 @@ bool RegionGraph::CollectWalkableNodes(NavigationRegion& region, const VoxelSamp
         }
 
         const auto position = PositionFromCellIndex(index, {0, 0, 0});
+
         if (!m_Movement.CanStandUsing(position, air, solid)) {
             continue;
         }
@@ -207,11 +206,12 @@ bool RegionGraph::CollectWalkableNodes(NavigationRegion& region, const VoxelSamp
         region.nodeIndexAtCell[index] = int(region.nodes.size());
         region.nodes.push_back({.cellIndex = index});
     }
+
     return true;
 }
 
 bool RegionGraph::ConnectWalkableNodes(NavigationRegion& region, const VoxelSamples& samples,
-                                      SearchBudget& budget) const {
+                                       SearchBudget& budget) const {
     const auto& agent = m_Movement.GetAgent();
     const auto air = [&](BlockPosition position) { return samples.IsAir(position); };
     const auto solid = [&](BlockPosition position) { return samples.IsSolid(position); };
@@ -227,6 +227,7 @@ bool RegionGraph::ConnectWalkableNodes(NavigationRegion& region, const VoxelSamp
         for (auto direction : Directions) {
             for (int heightChange = agent.maxStepUp; heightChange >= -agent.maxDrop; --heightChange) {
                 const auto destination = from + direction + BlockPosition(0, heightChange, 0);
+
                 if (!m_Movement.CanStandUsing(destination, air, solid) ||
                     !m_Movement.HasMovementClearance(from, destination, air)) {
                     continue;
@@ -241,13 +242,14 @@ bool RegionGraph::ConnectWalkableNodes(NavigationRegion& region, const VoxelSamp
             }
         }
     }
+
     return true;
 }
 
-bool RegionGraph::Build(NavigationRegion& region, SearchBudget& budget,
-                       const SnapshotLookup& findSnapshot) const {
+bool RegionGraph::Build(NavigationRegion& region, SearchBudget& budget, const SnapshotLookup& findSnapshot) const {
     if (!m_Movement.IsValid()) {
         budget.result.status = PathStatus::InvalidAgent;
+
         return false;
     }
 
@@ -255,8 +257,8 @@ bool RegionGraph::Build(NavigationRegion& region, SearchBudget& budget,
     VoxelSamples samples(region.coordinates * ClusterSide, -agent.maxDrop - 1,
                          ClusterSide + agent.height + agent.maxStepUp);
 
-    if (!SampleRegionVoxels(samples, budget, findSnapshot) ||
-        !CollectWalkableNodes(region, samples, budget) || !ConnectWalkableNodes(region, samples, budget)) {
+    if (!SampleRegionVoxels(samples, budget, findSnapshot) || !CollectWalkableNodes(region, samples, budget) ||
+        !ConnectWalkableNodes(region, samples, budget)) {
         return false;
     }
 
@@ -265,14 +267,15 @@ bool RegionGraph::Build(NavigationRegion& region, SearchBudget& budget,
     }
 
     AssignStrongComponents(region);
+
     return true;
 }
 
-bool RegionGraph::BuildEntrances(NavigationRegion& region, SearchBudget& budget,
-                                const RegionLookup& findRegion) const {
+bool RegionGraph::BuildEntrances(NavigationRegion& region, SearchBudget& budget, const RegionLookup& findRegion) const {
     if (region.entrancesBuilt) {
         return true;
     }
+
     MC_PROFILE_ZONE("Build sparse navigation entrances");
 
     // A representative per entrance patch AND endpoint SCC pair. Keeping
@@ -287,8 +290,8 @@ bool RegionGraph::BuildEntrances(NavigationRegion& region, SearchBudget& budget,
             return std::tie(sourceComponent, destinationCluster.x, destinationCluster.y, destinationCluster.z,
                             destinationComponent, patch.x, patch.y, patch.z) <
                    std::tie(other.sourceComponent, other.destinationCluster.x, other.destinationCluster.y,
-                            other.destinationCluster.z, other.destinationComponent, other.patch.x,
-                            other.patch.y, other.patch.z);
+                            other.destinationCluster.z, other.destinationComponent, other.patch.x, other.patch.y,
+                            other.patch.z);
         }
     };
 
@@ -310,21 +313,25 @@ bool RegionGraph::BuildEntrances(NavigationRegion& region, SearchBudget& budget,
 
         for (int edgeIndex = 0; edgeIndex < node.edgeCount; ++edgeIndex) {
             const auto& edge = node.edges[edgeIndex];
+
             if (edge.targetNodeIndex >= 0) {
                 continue;
             }
 
             const auto neighborCoordinates = ClusterForPosition(edge.target);
             auto& neighbor = neighbors[neighborCoordinates];
+
             if (!neighbor) {
                 neighbor = findRegion(neighborCoordinates);
             }
+
             if (!neighbor) {
                 return false;
             }
 
             const int destinationNodeIndex =
                 neighbor->nodeIndexAtCell[LocalCellIndex(edge.target, neighborCoordinates)];
+
             if (destinationNodeIndex < 0) {
                 continue;
             }
@@ -332,17 +339,17 @@ bool RegionGraph::BuildEntrances(NavigationRegion& region, SearchBudget& budget,
             const auto patch = localPosition / EntrancePatchSide;
             const EntranceKey key{node.componentIndex, neighborCoordinates,
                                   neighbor->nodes[destinationNodeIndex].componentIndex, patch};
-            const int distanceToPatchCenter = ManhattanDistance(
-                localPosition, patch * EntrancePatchSide + BlockPosition(EntrancePatchSide / 2));
+            const int distanceToPatchCenter =
+                ManhattanDistance(localPosition, patch * EntrancePatchSide + BlockPosition(EntrancePatchSide / 2));
 
             const auto entry = entrances.find(key);
+
             if (entry == entrances.end() || distanceToPatchCenter < entry->second.distanceToPatchCenter) {
-                entrances.insert_or_assign(key, EntranceCandidate{
-                                                    .entrance = {.sourceNodeIndex = sourceNodeIndex,
-                                                                 .target = edge.target,
-                                                                 .cost = edge.cost},
-                                                    .distanceToPatchCenter = distanceToPatchCenter,
-                                                });
+                entrances.insert_or_assign(
+                    key, EntranceCandidate{
+                             .entrance = {.sourceNodeIndex = sourceNodeIndex, .target = edge.target, .cost = edge.cost},
+                             .distanceToPatchCenter = distanceToPatchCenter,
+                         });
             }
         }
     }
@@ -352,12 +359,12 @@ bool RegionGraph::BuildEntrances(NavigationRegion& region, SearchBudget& budget,
     }
 
     region.entrancesBuilt = true;
+
     return true;
 }
 
-std::shared_ptr<RegionSearchTree> RegionGraph::BuildSearchTree(const NavigationRegion& region,
-                                                            int sourceNodeIndex,
-                                                            SearchBudget& budget) const {
+std::shared_ptr<RegionSearchTree> RegionGraph::BuildSearchTree(const NavigationRegion& region, int sourceNodeIndex,
+                                                               SearchBudget& budget) const {
     MC_PROFILE_ZONE("Build navigation cluster tree");
 
     auto tree = std::make_shared<RegionSearchTree>(region.nodes.size());
@@ -388,8 +395,8 @@ std::shared_ptr<RegionSearchTree> RegionGraph::BuildSearchTree(const NavigationR
 
         for (int edgeIndex = 0; edgeIndex < sourceNode.edgeCount; ++edgeIndex) {
             const auto& edge = sourceNode.edges[edgeIndex];
-            if (edge.targetNodeIndex < 0 ||
-                costFromSource + edge.cost >= tree->costFromSource[edge.targetNodeIndex]) {
+
+            if (edge.targetNodeIndex < 0 || costFromSource + edge.cost >= tree->costFromSource[edge.targetNodeIndex]) {
                 continue;
             }
 
@@ -398,6 +405,7 @@ std::shared_ptr<RegionSearchTree> RegionGraph::BuildSearchTree(const NavigationR
             open.emplace(costFromSource + edge.cost, edge.targetNodeIndex);
         }
     }
+
     return tree;
 }
 

@@ -36,6 +36,7 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     SamplerState fontSampler = SamplerState.Handle(uint2(parameters.samplerIndex, 0));
 
     float4 color = input.color;
+
     if (parameters.linearColor != 0) {
         color.rgb = select(color.rgb <= 0.04045,
             color.rgb / 12.92, pow((color.rgb + 0.055) / 1.055, 2.4));

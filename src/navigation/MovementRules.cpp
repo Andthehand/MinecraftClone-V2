@@ -5,8 +5,8 @@ namespace Navigation {
 using namespace detail;
 
 MovementRules::MovementRules(Agent profile) noexcept : m_Agent(profile) {
-    m_IsValid = profile.height >= 1 && profile.height <= 8 && profile.maxStepUp >= 0 &&
-                profile.maxStepUp <= 1 && profile.maxDrop >= 0 && profile.maxDrop <= 16;
+    m_IsValid = profile.height >= 1 && profile.height <= 8 && profile.maxStepUp >= 0 && profile.maxStepUp <= 1 &&
+                profile.maxDrop >= 0 && profile.maxDrop <= 16;
 }
 
 bool MovementRules::IsAir(const World& world, BlockPosition position) {
@@ -20,6 +20,7 @@ bool MovementRules::CanStand(const World& world, BlockPosition position) const {
         position, [&](BlockPosition samplePosition) { return IsAir(world, samplePosition); },
         [&](BlockPosition samplePosition) {
             const auto block = world.GetBlock(samplePosition);
+
             return block && *block != Blocks::Air;
         });
 }
@@ -30,10 +31,10 @@ bool MovementRules::CanMove(const World& world, BlockPosition from, BlockPositio
     }
 
     const auto difference = destination - from;
+
     return std::abs(difference.x) + std::abs(difference.z) == 1 && difference.y <= m_Agent.maxStepUp &&
            difference.y >= -m_Agent.maxDrop && CanStand(world, from) && CanStand(world, destination) &&
-           HasMovementClearance(from, destination,
-                                [&](BlockPosition position) { return IsAir(world, position); });
+           HasMovementClearance(from, destination, [&](BlockPosition position) { return IsAir(world, position); });
 }
 
 } // namespace Navigation

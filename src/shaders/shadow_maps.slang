@@ -50,6 +50,7 @@ float CascadeVisibility(uint sceneIndex, SceneData data, float3 worldPosition, f
     if (cascade < 2u) {
         float end = data.splits[cascade];
         float start = end * (1.0f - data.splits.w);
+
         if (viewDepth > start) {
             float next = MapVisibility(sceneIndex, data, worldPosition, normal, cascade + 1u);
             visibility = lerp(visibility, next, smoothstep(start, end, viewDepth));

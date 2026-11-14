@@ -53,6 +53,12 @@ FetchContent_Declare(glm
 )
 FetchContent_MakeAvailable(glm)
 
+FetchContent_Declare(EnTT
+    GIT_REPOSITORY https://github.com/skypjack/entt.git
+    GIT_TAG d4014c74dc3793aba95ae354d6e23a026c2796db # v3.15.0
+)
+FetchContent_MakeAvailable(EnTT)
+
 set(FASTNOISE2_TOOLS OFF CACHE BOOL "Build FastNoise2 tools")
 set(FASTNOISE2_TESTS OFF CACHE BOOL "Build FastNoise2 tests")
 set(FASTNOISE2_STRICT_FP ON CACHE BOOL "Keep terrain consistent across SIMD implementations")
@@ -81,10 +87,18 @@ target_compile_features(MinecraftWorld PUBLIC cxx_std_23)
 set_target_properties(MinecraftWorld PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(MinecraftWorld PUBLIC glm::glm FastNoise PRIVATE MinecraftProfiling)
 
+# Gameplay is CPU-only; input collection and camera synchronization live in the app.
+add_library(MinecraftGame STATIC
+    src/game/GameScene.cpp
+)
+target_include_directories(MinecraftGame PUBLIC src)
+target_compile_features(MinecraftGame PUBLIC cxx_std_23)
+set_target_properties(MinecraftGame PROPERTIES CXX_EXTENSIONS OFF)
+target_link_libraries(MinecraftGame PUBLIC MinecraftWorld EnTT::EnTT PRIVATE MinecraftProfiling)
+
 add_executable(MinecraftClone
     src/main.cpp
     src/app/Application.cpp
-    src/app/CameraController.cpp
     src/diagnostics/DebugUI.cpp
     src/diagnostics/FrameCounter.cpp
     src/rendering/Camera.cpp
@@ -100,7 +114,7 @@ add_executable(MinecraftClone
 )
 target_compile_features(MinecraftClone PRIVATE cxx_std_23)
 set_target_properties(MinecraftClone PROPERTIES CXX_EXTENSIONS OFF)
-target_link_libraries(MinecraftClone PRIVATE RealRHI MinecraftWorld MinecraftProfiling)
+target_link_libraries(MinecraftClone PRIVATE RealRHI MinecraftGame MinecraftProfiling)
 target_compile_definitions(MinecraftClone PRIVATE MINECRAFT_ENABLE_IMGUI=$<BOOL:${MINECRAFT_ENABLE_IMGUI}>)
 if(MINECRAFT_ENABLE_IMGUI)
     target_link_libraries(MinecraftClone PRIVATE RealRHIImGui)

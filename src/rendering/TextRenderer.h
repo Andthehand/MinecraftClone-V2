@@ -9,9 +9,8 @@ class TextRenderer {
 public:
     bool Initialize(RealRHI::Device& device);
 
-    bool AddRenderPass(RealRHI::Device& device, RealRHI::RenderGraph& graph,
-        RealRHI::RenderGraphResource backbuffer, const RealRHI::FrameContext& frame,
-        RealRHI::TextureFormat format, const TextBatch& batch);
+    bool AddRenderPass(RealRHI::Device& device, RealRHI::RenderGraph& graph, RealRHI::RenderGraphResource backbuffer,
+                       const RealRHI::FrameContext& frame, RealRHI::TextureFormat format, const TextBatch& batch);
 
 private:
     RealRHI::Ref<RealRHI::Texture> m_Atlas;

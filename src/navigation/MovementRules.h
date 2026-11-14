@@ -5,16 +5,17 @@
 #include <glm/common.hpp>
 
 namespace Navigation::detail {
-    inline constexpr std::array<BlockPosition, 4> Directions{{{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}}};
+inline constexpr std::array<BlockPosition, 4> Directions{{{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}}};
 
-    inline int FloorDivide(int value, int divisor) {
-        return value / divisor - (value % divisor < 0 ? 1 : 0);
-    }
+inline int FloorDivide(int value, int divisor) {
+    return value / divisor - (value % divisor < 0 ? 1 : 0);
+}
 
-    inline int ManhattanDistance(BlockPosition a, BlockPosition b) {
-        const auto difference = glm::abs(a - b);
-        return difference.x + difference.y + difference.z;
-    }
+inline int ManhattanDistance(BlockPosition a, BlockPosition b) {
+    const auto difference = glm::abs(a - b);
+
+    return difference.x + difference.y + difference.z;
+}
 } // namespace Navigation::detail
 
 namespace Navigation {
@@ -23,20 +24,15 @@ class MovementRules {
 public:
     explicit MovementRules(Agent profile) noexcept;
 
-    bool IsValid() const noexcept {
-        return m_IsValid;
-    }
+    bool IsValid() const noexcept { return m_IsValid; }
 
-    const Agent& GetAgent() const {
-        return m_Agent;
-    }
+    const Agent& GetAgent() const { return m_Agent; }
 
     bool CanStand(const World& world, glm::ivec3 position) const;
     bool CanMove(const World& world, glm::ivec3 from, glm::ivec3 destination) const;
 
     // Templated readers preserve fast array access for sampled/cached voxels.
-    template <class IsAir, class IsSolid>
-    bool CanStandUsing(glm::ivec3 position, IsAir&& air, IsSolid&& solid) const {
+    template <class IsAir, class IsSolid> bool CanStandUsing(glm::ivec3 position, IsAir&& air, IsSolid&& solid) const {
         if (!m_IsValid) {
             return false;
         }
@@ -54,8 +50,7 @@ public:
         return true;
     }
 
-    template <class IsAir>
-    bool HasMovementClearance(glm::ivec3 from, glm::ivec3 destination, IsAir&& air) const {
+    template <class IsAir> bool HasMovementClearance(glm::ivec3 from, glm::ivec3 destination, IsAir&& air) const {
         if (!m_IsValid) {
             return false;
         }

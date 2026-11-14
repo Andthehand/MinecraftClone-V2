@@ -10,6 +10,7 @@ public:
     Camera();
 
     void SetPosition(glm::vec3 position);
+    void SetYawPitch(float yawRadians, float pitchRadians);
     void MoveLocal(float forward, float right, float up);
     void MoveWorld(glm::vec3 delta);
     void AddYawPitch(float yawDeltaRadians, float pitchDeltaRadians);
@@ -25,8 +26,8 @@ public:
     [[nodiscard]] const glm::mat4& GetViewProjectionMatrix() const;
 
     [[nodiscard]] std::array<glm::vec4, 6> GetFrustumPlanes() const;
-    [[nodiscard]] static bool IsBoxVisible(const std::array<glm::vec4, 6>& planes,
-        const glm::vec3& minimum, const glm::vec3& maximum);
+    [[nodiscard]] static bool IsBoxVisible(const std::array<glm::vec4, 6>& planes, const glm::vec3& minimum,
+                                           const glm::vec3& maximum);
 
 private:
     glm::vec3 m_Position;

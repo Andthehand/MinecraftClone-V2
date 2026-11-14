@@ -17,4 +17,3 @@ struct ChunkMesh {
     std::vector<VoxelVertex> vertices;
     std::vector<uint32_t> indices;
 };
-

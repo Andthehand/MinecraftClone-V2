@@ -8,5 +8,5 @@
 constexpr size_t ChunkNeighborIndex(int x, int y, int z) {
     return static_cast<size_t>(((z + 1) * 3 + y + 1) * 3 + x + 1);
 }
-using ChunkMeshNeighbors = std::array<const Octree*, 27>;
 
+using ChunkMeshNeighbors = std::array<const Octree*, 27>;

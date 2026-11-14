@@ -16,12 +16,13 @@ inline BlockPosition ClusterForPosition(BlockPosition position) {
 
 inline int LocalCellIndex(BlockPosition position, BlockPosition cluster) {
     const auto local = position - cluster * ClusterSide;
+
     return (local.z * ClusterSide + local.y) * ClusterSide + local.x;
 }
 
 inline BlockPosition PositionFromCellIndex(int index, BlockPosition cluster) {
-    return cluster * ClusterSide + BlockPosition(index % ClusterSide, (index / ClusterSide) % ClusterSide,
-                                                 index / (ClusterSide * ClusterSide));
+    return cluster * ClusterSide +
+           BlockPosition(index % ClusterSide, (index / ClusterSide) % ClusterSide, index / (ClusterSide * ClusterSide));
 }
 
 struct MovementEdge {
@@ -72,9 +73,7 @@ struct NavigationRegion {
     uint64_t lastUsed = 0;
     size_t retainedBytes = 0;
 
-    explicit NavigationRegion(BlockPosition coordinates) : coordinates(coordinates) {
-        nodeIndexAtCell.fill(-1);
-    }
+    explicit NavigationRegion(BlockPosition coordinates) : coordinates(coordinates) { nodeIndexAtCell.fill(-1); }
 };
 
 struct ChunkSnapshot {
@@ -94,13 +93,11 @@ public:
     using SnapshotLookup = std::function<std::shared_ptr<detail::ChunkSnapshot>(glm::ivec3)>;
     using RegionLookup = std::function<std::shared_ptr<Region>(glm::ivec3)>;
 
-    explicit RegionGraph(const MovementRules& rules)
-        : m_Movement(rules) {}
+    explicit RegionGraph(const MovementRules& rules) : m_Movement(rules) {}
 
     bool Build(Region& region, Budget& budget, const SnapshotLookup& findSnapshot) const;
     bool BuildEntrances(Region& region, Budget& budget, const RegionLookup& findRegion) const;
-    std::shared_ptr<SearchTree> BuildSearchTree(const Region& region, int sourceNodeIndex,
-                                                Budget& budget) const;
+    std::shared_ptr<SearchTree> BuildSearchTree(const Region& region, int sourceNodeIndex, Budget& budget) const;
 
 private:
     struct VoxelSamples;

@@ -17,5 +17,6 @@ float3 SkyColor(float3 direction, float3 sunDirection) {
     float3 sky = lerp(night, SkyColor(direction), DaylightAmount(sunDirection));
     // Share the atmospheric glow with distance fog so the horizon stays continuous.
     float glow = pow(saturate(dot(direction, sunDirection)), 96.0f) * smoothstep(-0.08f, 0.02f, sunDirection.y);
+
     return sky + float3(1.0f, 0.70f, 0.32f) * glow * 0.10f;
 }

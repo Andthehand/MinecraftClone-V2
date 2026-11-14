@@ -50,6 +50,7 @@ VoxelVertex LoadVoxelVertex(uint vertexID) {
     vertex.uv = asfloat(vertices.Load2(vertexByteOffset + 24u));
     vertex.tile = vertices.Load(vertexByteOffset + 32u);
     vertex.occlusion = asfloat(vertices.Load(vertexByteOffset + 36u));
+
     return vertex;
 }
 
@@ -67,6 +68,7 @@ VertexOutput vertexMain(uint vertexID : SV_VertexID) {
     output.normal = vertex.normal;
     output.occlusion = vertex.occlusion;
     output.worldPosition = worldPosition;
+
     return output;
 }
 
@@ -82,6 +84,7 @@ float4 SampleVoxelAlbedo(float2 uv, uint tile) {
     float2 tilePixel = clamp(frac(uv) * tileSize, 0.5f, tileSize - 0.5f);
     float2 tileOrigin = float2(float(tile) * tileSize, 0.0f);
     float2 atlasUV = (tileOrigin + tilePixel) / float2(atlasWidth, atlasHeight);
+
     return atlas.Sample(pixelSampler, atlasUV);
 }
 
@@ -89,6 +92,7 @@ float4 SampleVoxelAlbedo(float2 uv, uint tile) {
 float CalculateSunVisibility(SunData sun, float3 worldPosition, float3 normal, float cameraDistance) {
     StructuredBuffer<SceneData> buffer = StructuredBuffer<SceneData>.Handle(uint2(sun.shadowDataIndex, 0));
     SceneData data = buffer[0];
+
     if (cameraDistance >= data.settings.w) {
         return SHADOW_CLEAR;
     }
@@ -113,9 +117,11 @@ float3 CalculateLighting(SunData sun, float3 worldPosition, float3 normal, float
     float horizonFade = smoothstep(0.0f, 0.12f, sunDirection.y);
     float sunlight = surfaceSunlight * horizonFade;
     float visibility = SHADOW_CLEAR;
+
     if (sunlight > 0.0f) {
         visibility = CalculateSunVisibility(sun, worldPosition, normal, cameraDistance);
     }
+
     return ambientLight + sunColor * sunIntensity * sunlight * visibility;
 }
 
@@ -138,5 +144,6 @@ float4 fragmentMain(VertexOutput input) : SV_Target {
     float fogAmount = smoothstep(fogStartDistance, parameters.fogEnd, cameraDistance);
     float3 viewDirection = cameraToSurface / max(cameraDistance, 0.0001f);
     float3 fogColor = SkyColor(viewDirection, sun.sunDirection.xyz);
+
     return float4(lerp(litColor, fogColor, fogAmount), albedo.a);
 }

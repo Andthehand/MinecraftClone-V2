@@ -15,7 +15,9 @@ struct ChunkRenderMesh {
 class ChunkRenderCache {
 public:
     explicit ChunkRenderCache(RealRHI::Device& device) : m_Device(device) {}
+
     bool Apply(const ChunkUpdates& updates);
+
     [[nodiscard]] auto& GetMeshes() { return m_Meshes; }
 
 private:

@@ -7,6 +7,7 @@
 #include "rendering/Camera.h"
 #include "rendering/Renderer.h"
 #include "world/World.h"
+#include "game/GameScene.h"
 #include "world/Block.h"
 #include "world/ChunkStreamer.h"
 #include "diagnostics/FrameCounter.h"
@@ -34,6 +35,7 @@ private:
 
     Camera m_Camera;
     World m_World;
+    GameScene m_GameScene;
     ChunkStreamer m_ChunkStreamer;
     std::unique_ptr<Renderer> m_Renderer;
     DebugUI m_DebugUI;

@@ -23,12 +23,13 @@ public:
     std::uint32_t GetVoxel(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept {
         const Node* node = &m_Root;
         std::size_t bit = m_Depth;
+
         while (node->children) {
             --bit;
-            const auto child = ((x >> bit) & 1u)
-                | (((y >> bit) & 1u) << 1) | (((z >> bit) & 1u) << 2);
+            const auto child = ((x >> bit) & 1u) | (((y >> bit) & 1u) << 1) | (((z >> bit) & 1u) << 2);
             node = &(*node->children)[child];
         }
+
         return node->voxel;
     }
 
@@ -41,19 +42,20 @@ public:
 
     void RemoveVoxel(std::uint32_t x, std::uint32_t y, std::uint32_t z);
     void Fill(std::uint32_t voxel);
+
     bool IsUniform() const noexcept { return !m_Root.children; }
+
 private:
     // Terrain construction assigns uniform regions directly instead of editing
     // individual voxels through the root for every column.
     friend class TerrainGenerator;
 
-    static std::uint32_t ChildIndex(std::uint32_t x, std::uint32_t y,
-        std::uint32_t z, std::size_t bit) noexcept;
+    static std::uint32_t ChildIndex(std::uint32_t x, std::uint32_t y, std::uint32_t z, std::size_t bit) noexcept;
 
-    static void SetNode(Node& node, std::uint32_t x, std::uint32_t y,
-        std::uint32_t z, std::size_t remaining, std::uint32_t voxel);
-    static void CopyNode(const Node& node, std::uint32_t* destination,
-        std::size_t stride, std::uint32_t size);
+    static void SetNode(Node& node, std::uint32_t x, std::uint32_t y, std::uint32_t z, std::size_t remaining,
+                        std::uint32_t voxel);
+    static void CopyNode(const Node& node, std::uint32_t* destination, std::size_t stride, std::uint32_t size);
+
 private:
     const uint32_t m_Depth;
     const uint32_t m_SideLength;

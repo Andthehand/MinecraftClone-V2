@@ -19,9 +19,12 @@ public:
 
     bool Initialize();
     bool DrawFrame(const RealRHI::FrameContext& frameContext, const Camera& camera, const World& world,
-        const TextBatch& text, DebugUI& ui);
+                   const TextBatch& text, DebugUI& ui);
+
     bool ApplyChunkUpdates(const ChunkUpdates& updates) { return m_ChunkCache.Apply(updates); }
+
     void ToggleWireframe() { m_WireframeEnabled = !m_WireframeEnabled; }
+
     bool IsWireframeEnabled() const { return m_WireframeEnabled; }
 
 private:
@@ -30,12 +33,13 @@ private:
     bool CreateShadowShader();
 
     struct FrameResources;
-    void CollectVisibleChunks(RealRHI::RenderGraph& graph, FrameResources& resources, const World& world, ChunkCoord player,
-        const Camera& camera);
+    void CollectVisibleChunks(RealRHI::RenderGraph& graph, FrameResources& resources, const World& world,
+                              ChunkCoord player, const Camera& camera);
     void BufferDataInitPass(RealRHI::RenderGraph& graph, FrameResources& resources);
     void AddShadowMapPasses(RealRHI::RenderGraph& graph, FrameResources& resources);
-    void AddVoxelPass(RealRHI::RenderGraph& graph, FrameResources& resources,
-        const RealRHI::FrameContext& frame, const Camera& camera, RealRHI::RenderGraphResource backbuffer);
+    void AddVoxelPass(RealRHI::RenderGraph& graph, FrameResources& resources, const RealRHI::FrameContext& frame,
+                      const Camera& camera, RealRHI::RenderGraphResource backbuffer);
+
 private:
     RealRHI::Device& m_Device;
     RealRHI::Swapchain& m_Swapchain;
