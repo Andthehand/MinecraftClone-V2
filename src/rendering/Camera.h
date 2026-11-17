@@ -1,9 +1,15 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <glm/mat4x4.hpp>
+
+struct CameraRay {
+    glm::vec3 origin{0.0f};
+    glm::vec3 direction{0.0f};
+};
 
 class Camera {
 public:
@@ -24,6 +30,9 @@ public:
     [[nodiscard]] glm::mat4 GetViewMatrix() const;
     [[nodiscard]] glm::mat4 GetProjectionMatrix() const;
     [[nodiscard]] const glm::mat4& GetViewProjectionMatrix() const;
+
+    // Mouse coordinates and viewport size both use logical pixels, including on high-DPI displays.
+    [[nodiscard]] CameraRay GetPickRay(float mouseX, float mouseY, int width, int height) const;
 
     [[nodiscard]] std::array<glm::vec4, 6> GetFrustumPlanes() const;
     [[nodiscard]] static bool IsBoxVisible(const std::array<glm::vec4, 6>& planes, const glm::vec3& minimum,

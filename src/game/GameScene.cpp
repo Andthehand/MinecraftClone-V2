@@ -2,7 +2,11 @@
 #include "config/Settings.h"
 #include "world/World.h"
 #include "world/Block.h"
+#include "world/BlockRegistry.h"
 #include "diagnostics/Profiling.h"
+#include "rendering/Renderer.h"
+
+#include <FrameContext.h>
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
@@ -19,12 +23,37 @@ GameScene::GameScene() {
 }
 
 const Game::Transform* GameScene::GetPlayerTransform() const {
-    return m_Registry.valid(m_Player) ? m_Registry.try_get<Game::Transform>(m_Player) : nullptr;
+    return m_Registry.try_get<Game::Transform>(m_Player);
 }
 
-void GameScene::Update(const Game::PlayerInput& input, float deltaTime) {
+void GameScene::OnUpdate(const Game::PlayerInput& input, float deltaTime) {
     MC_PROFILE_ZONE("Update game scene");
 
+    UpdatePlayer(input, deltaTime);
+    if (const auto* transform = GetPlayerTransform()) {
+        m_Camera.SetPosition(transform->position);
+        m_Camera.SetYawPitch(transform->yaw, transform->pitch);
+    }
+}
+
+bool GameScene::OnRender(const RealRHI::FrameContext& frame, Renderer& renderer, DebugUI& ui) {
+    MC_PROFILE_ZONE("Render game scene");
+
+    m_Camera.SetAspectRatio(float(frame.width) / float(frame.height));
+
+    {
+        const auto* player = GetPlayerTransform();
+        const auto updates = m_ChunkStreamer.Update(m_World, player->position);
+
+        if (!renderer.ApplyChunkUpdates(updates)) {
+            return false;
+        }
+    }
+
+    return renderer.DrawFrame(frame, m_Camera, m_World, ui);
+}
+
+void GameScene::UpdatePlayer(const Game::PlayerInput& input, float deltaTime) {
     if (!std::isfinite(deltaTime) || deltaTime <= 0.0f) {
         return;
     }
@@ -46,21 +75,27 @@ void GameScene::Update(const Game::PlayerInput& input, float deltaTime) {
     }
 }
 
-void GameScene::EditBlock(World& world, glm::vec3 direction, bool place, uint32_t block) {
+void GameScene::SelectBlock(uint32_t block) {
+    if (block > Blocks::Air && block < Blocks::Registry().All().size()) {
+        m_SelectedBlock = block;
+    }
+}
+
+void GameScene::EditBlock(const CameraRay& ray, Game::BlockAction action) {
     const auto* player = GetPlayerTransform();
 
     if (!player) {
         return;
     }
 
-    const auto hit = world.Raycast(player->position, direction, Options::Game::BLOCK_INTERACTION_REACH);
+    const auto hit = m_World.Raycast(ray.origin, ray.direction, Options::Game::BLOCK_INTERACTION_REACH);
 
     if (!hit) {
         return;
     }
 
-    if (!place) {
-        world.SetBlock(hit->position, Blocks::Air);
+    if (action == Game::BlockAction::Break) {
+        m_World.SetBlock(hit->position, Blocks::Air);
         return;
     }
 
@@ -74,7 +109,7 @@ void GameScene::EditBlock(World& world, glm::vec3 direction, bool place, uint32_
         return;
     }
 
-    if (world.GetBlock(position) == Blocks::Air) {
-        world.SetBlock(position, block);
+    if (m_World.GetBlock(position) == Blocks::Air) {
+        m_World.SetBlock(position, m_SelectedBlock);
     }
 }

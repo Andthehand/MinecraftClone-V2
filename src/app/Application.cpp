@@ -6,8 +6,6 @@
 #include "world/BlockRegistry.h"
 
 #include <SDL3/SDL.h>
-#include <glm/common.hpp>
-#include <glm/trigonometric.hpp>
 
 #include <chrono>
 #include <algorithm>
@@ -167,7 +165,9 @@ int Application::Run() {
         const float deltaTime = std::chrono::duration<float>(currentFrameTime - previousFrameTime).count();
         previousFrameTime = currentFrameTime;
 
-        m_DebugUI.BeginFrame(m_Camera, *m_Renderer, m_SelectedBlock, m_LastFps);
+        auto selectedBlock = m_GameScene.GetSelectedBlock();
+        m_DebugUI.BeginFrame(m_GameScene.GetCamera(), *m_Renderer, selectedBlock, m_LastFps);
+        m_GameScene.SelectBlock(selectedBlock);
         OnUpdate(deltaTime);
 
         if (!m_DebugUI.EndFrame()) {
@@ -210,9 +210,7 @@ void Application::ProcessEvents() {
         if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
             if (event.key.scancode >= SDL_SCANCODE_1 && event.key.scancode <= SDL_SCANCODE_9) {
                 const auto id = static_cast<uint32_t>(event.key.scancode - SDL_SCANCODE_1 + 1);
-                if (id < Blocks::Registry().All().size()) {
-                    m_SelectedBlock = id;
-                }
+                m_GameScene.SelectBlock(id);
             }
         }
 
@@ -222,25 +220,15 @@ void Application::ProcessEvents() {
             uint32_t width = 0, height = 0;
             // Mouse coordinates and window size both use logical pixels, including on high-DPI displays.
             if (m_Window->GetSize(width, height) == Result::Success) {
-                EditBlock(event.button.x, event.button.y, static_cast<int>(width), static_cast<int>(height),
-                          event.button.button == SDL_BUTTON_RIGHT);
+                const auto ray = m_GameScene.GetCamera().GetPickRay(
+                event.button.x, event.button.y, static_cast<int>(width), static_cast<int>(height));
+
+                const auto action = event.button.button == SDL_BUTTON_RIGHT ? Game::BlockAction::Place
+                                                                            : Game::BlockAction::Break;
+                m_GameScene.EditBlock(ray, action);
             }
         }
     }
-}
-
-void Application::EditBlock(float mouseX, float mouseY, int windowWidth, int windowHeight, bool place) {
-    if (windowWidth <= 0 || windowHeight <= 0) {
-        return;
-    }
-
-    const float x = 2.0f * mouseX / float(windowWidth) - 1.0f;
-    const float y = 1.0f - 2.0f * mouseY / float(windowHeight);
-    const float halfHeight = glm::tan(m_Camera.GetFovYRadians() * 0.5f);
-    const float aspect = float(windowWidth) / float(windowHeight);
-    const glm::vec3 direction =
-        m_Camera.GetForward() + m_Camera.GetRight() * (x * halfHeight * aspect) + m_Camera.GetUp() * (y * halfHeight);
-    m_GameScene.EditBlock(m_World, direction, place, m_SelectedBlock);
 }
 
 void Application::OnUpdate(float deltaTime) {
@@ -250,12 +238,7 @@ void Application::OnUpdate(float deltaTime) {
         input = ReadPlayerInputFromKeyboard();
     }
 
-    m_GameScene.Update(input, deltaTime);
-
-    if (const auto* transform = m_GameScene.GetPlayerTransform()) {
-        m_Camera.SetPosition(transform->position);
-        m_Camera.SetYawPitch(transform->yaw, transform->pitch);
-    }
+    m_GameScene.OnUpdate(input, deltaTime);
 }
 
 bool Application::OnRender(float deltaTime) {
@@ -269,18 +252,8 @@ bool Application::OnRender(float deltaTime) {
     }
 
     const FrameContext frame = m_Swapchain->BeginFrame();
-    m_Camera.SetAspectRatio(float(frame.width) / float(frame.height));
 
-    {
-        const auto* player = m_GameScene.GetPlayerTransform();
-        const auto updates = m_ChunkStreamer.Update(m_World, player ? player->position : m_Camera.GetPosition());
-
-        if (!m_Renderer->ApplyChunkUpdates(updates)) {
-            return false;
-        }
-    }
-
-    if (!m_Renderer->DrawFrame(frame, m_Camera, m_World, m_DebugUI)) {
+    if (!m_GameScene.OnRender(frame, *m_Renderer, m_DebugUI)) {
         return false;
     }
 

@@ -80,6 +80,18 @@ float Camera::GetFovYRadians() const {
     return m_FovYRadians;
 }
 
+CameraRay Camera::GetPickRay(float mouseX, float mouseY, int width, int height) const {
+    const float x = 2.0f * mouseX / float(width) - 1.0f;
+    const float y = 1.0f - 2.0f * mouseY / float(height);
+    const float halfHeight = glm::tan(m_FovYRadians * 0.5f);
+    const float aspect = float(width) / float(height);
+
+    return CameraRay{
+        .origin = m_Position,
+        .direction = GetForward() + GetRight() * (x * halfHeight * aspect) + GetUp() * (y * halfHeight),
+    };
+}
+
 glm::mat4 Camera::GetViewMatrix() const {
     // World forward remains +Z initially; visible points have negative view-space Z.
     return glm::lookAtRH(m_Position, m_Position + GetForward(), GetUp());

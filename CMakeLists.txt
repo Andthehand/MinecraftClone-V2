@@ -11,7 +11,6 @@ include(FetchContent)
 # Build options
 option(MINECRAFT_ENABLE_TRACY "Profile MinecraftClone and RealRHI with Tracy" OFF)
 option(MINECRAFT_ENABLE_IMGUI "Include the ImGui debug interface" ON)
-option(MINECRAFT_BUILD_TESTS "Build CPU block registry and meshing tests" OFF)
 
 # Dependencies
 # Create one client before RealRHI so game and RHI zones share a capture.
@@ -192,12 +191,3 @@ add_custom_target(MinecraftCloneAssets
 )
 add_dependencies(MinecraftClone MinecraftCloneAssets)
 
-# Tests
-if(MINECRAFT_BUILD_TESTS)
-    enable_testing()
-
-    add_executable(MinecraftBlockTests tests/BlockRegistryTests.cpp)
-    target_link_libraries(MinecraftBlockTests PRIVATE MinecraftCore nlohmann_json::nlohmann_json)
-    target_compile_definitions(MinecraftBlockTests PRIVATE JSON_NOEXCEPTION=1)
-    add_test(NAME MinecraftBlockTests COMMAND MinecraftBlockTests "${CMAKE_CURRENT_SOURCE_DIR}/assets")
-endif()

@@ -4,12 +4,8 @@
 
 #include <memory>
 
-#include "rendering/Camera.h"
 #include "rendering/Renderer.h"
-#include "world/World.h"
 #include "game/GameScene.h"
-#include "world/Block.h"
-#include "world/ChunkStreamer.h"
 #include "diagnostics/FrameCounter.h"
 #include "diagnostics/DebugUI.h"
 
@@ -25,7 +21,6 @@ public:
 private:
     bool Initialize();
     void ProcessEvents();
-    void EditBlock(float mouseX, float mouseY, int windowWidth, int windowHeight, bool place);
 
 private:
     // Keep the device alive until all graphics resources are released.
@@ -33,16 +28,12 @@ private:
     RealRHI::Ref<RealRHI::Window> m_Window;
     RealRHI::Ref<RealRHI::Swapchain> m_Swapchain;
 
-    Camera m_Camera;
-    World m_World;
     GameScene m_GameScene;
-    ChunkStreamer m_ChunkStreamer;
     std::unique_ptr<Renderer> m_Renderer;
     DebugUI m_DebugUI;
 
     bool m_Running = true;
 
     FrameCounter m_FrameCounter;
-    uint32_t m_SelectedBlock = Blocks::Grass;
     double m_LastFps = 0.0;
 };
