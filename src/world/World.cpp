@@ -32,7 +32,7 @@ size_t ChunkCoordHash::operator()(ChunkCoord c) const noexcept {
     return hash;
 }
 
-ChunkMeshNeighbors World::GetChunkNeighbors(ChunkCoord coord) const {
+World::ChunkMeshNeighbors World::GetChunkNeighbors(ChunkCoord coord) const {
     ChunkMeshNeighbors result{};
 
     for (int z = -1; z <= 1; ++z) {

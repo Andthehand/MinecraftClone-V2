@@ -1,7 +1,6 @@
 #pragma once
-#include "world/ChunkNeighborhood.h"
+#include <cstdint>
 #include <vector>
-#include <array>
 #include <glm/vec3.hpp>
 #include <glm/vec2.hpp>
 

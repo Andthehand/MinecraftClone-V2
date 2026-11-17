@@ -2,9 +2,10 @@
 
 #include "world/Chunk.h"
 #include "world/ChunkCoord.h"
-#include "world/ChunkNeighborhood.h"
 #include "world/TerrainGenerator.h"
 
+#include <array>
+#include <cstddef>
 #include <unordered_map>
 #include <optional>
 
@@ -17,6 +18,14 @@ struct BlockHit {
 class World {
 public:
     using ChunkMap = std::unordered_map<ChunkCoord, Chunk, ChunkCoordHash>;
+
+    // The surrounding 3x3x3 volume, including edge and corner neighbors for AO.
+    // The center slot is unused. Missing chunks are air for standalone meshes.
+    using ChunkMeshNeighbors = std::array<const Octree*, 27>;
+
+    [[nodiscard]] static constexpr size_t ChunkNeighborIndex(int x, int y, int z) {
+        return static_cast<size_t>(((z + 1) * 3 + y + 1) * 3 + x + 1);
+    }
 
     // Getters
     [[nodiscard]] const ChunkMap& GetChunks() const { return m_Chunks; }

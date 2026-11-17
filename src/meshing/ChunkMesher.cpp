@@ -52,7 +52,7 @@ struct MeshScratch {
 };
 } // namespace
 
-ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbors) {
+ChunkMesh BuildChunkMesh(const Octree& octree, const World::ChunkMeshNeighbors& neighbors) {
     MC_PROFILE_ZONE("Build chunk mesh");
     ChunkMesh mesh;
     const int size = static_cast<int>(octree.GetSideLength());
@@ -74,7 +74,7 @@ ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbo
                     continue;
                 }
 
-                const Octree* neighbor = neighbors[ChunkNeighborIndex(x, y, z)];
+                const Octree* neighbor = neighbors[World::ChunkNeighborIndex(x, y, z)];
                 const bool neighborUniform = neighbor && neighbor->IsUniform();
                 const bool neighborSolid = neighborUniform && neighbor->GetVoxel(0, 0, 0) != Blocks::Air;
                 exteriorEmpty &= !neighbor || (neighborUniform && !neighborSolid);
@@ -143,7 +143,7 @@ ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbo
                     continue;
                 }
 
-                const Octree* neighbor = neighbors[ChunkNeighborIndex(dx, dy, dz)];
+                const Octree* neighbor = neighbors[World::ChunkNeighborIndex(dx, dy, dz)];
 
                 if (!neighbor) {
                     continue;
@@ -203,7 +203,7 @@ ChunkMesh BuildChunkMesh(const Octree& octree, const ChunkMeshNeighbors& neighbo
             glm::ivec3 adjacentOffset(0);
             adjacentOffset[axis] = sign;
             const Octree* adjacent =
-                neighbors[ChunkNeighborIndex(adjacentOffset.x, adjacentOffset.y, adjacentOffset.z)];
+                neighbors[World::ChunkNeighborIndex(adjacentOffset.x, adjacentOffset.y, adjacentOffset.z)];
 
             if (uniform && adjacent && adjacent->IsUniform() && adjacent->GetVoxel(0, 0, 0) != Blocks::Air) {
                 continue;
