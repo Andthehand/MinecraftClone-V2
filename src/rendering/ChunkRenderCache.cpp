@@ -1,5 +1,5 @@
 #include "rendering/ChunkRenderCache.h"
-#include "world/ChunkStreamer.h"
+#include "world/World.h"
 #include "diagnostics/Profiling.h"
 #include <iostream>
 

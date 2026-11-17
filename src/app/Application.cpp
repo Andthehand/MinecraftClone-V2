@@ -130,7 +130,6 @@ bool Application::Initialize() {
     }
 
     m_Renderer = std::make_unique<Renderer>(*m_Device, *m_Swapchain);
-
     if (!m_Renderer->Initialize()) {
         return false;
     }
@@ -154,16 +153,15 @@ Application::~Application() {
 
 int Application::Run() {
     auto previousFrameTime = std::chrono::steady_clock::now();
-    m_FrameCounter.Reset();
 
     while (m_Running) {
         MC_PROFILE_ZONE("Frame");
 
-        ProcessEvents();
-
         const auto currentFrameTime = std::chrono::steady_clock::now();
         const float deltaTime = std::chrono::duration<float>(currentFrameTime - previousFrameTime).count();
         previousFrameTime = currentFrameTime;
+
+        ProcessEvents();
 
         auto selectedBlock = m_GameScene.GetSelectedBlock();
         m_DebugUI.BeginFrame(m_GameScene.GetCamera(), *m_Renderer, selectedBlock, m_LastFps);

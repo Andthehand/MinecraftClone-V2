@@ -1,6 +1,9 @@
 #include "world/World.h"
 #include "world/Block.h"
+#include "meshing/ChunkMesher.h"
+#include "diagnostics/Profiling.h"
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -9,6 +12,30 @@
 #include <glm/geometric.hpp>
 
 namespace {
+// Returns a list of chunk offsets to load, sorted by distance from the origin.
+const std::vector<ChunkCoord>& GetChunkLoadOffsets() {
+    static const std::vector<ChunkCoord> offsets = [] {
+        std::vector<ChunkCoord> result;
+        constexpr int radius = Options::World::LOAD_RADIUS_CHUNKS;
+
+        for (int z = -radius; z <= radius; ++z) {
+            for (int y = -radius; y <= radius; ++y) {
+                for (int x = -radius; x <= radius; ++x) {
+                    result.push_back({x, y, z});
+                }
+            }
+        }
+
+        std::stable_sort(result.begin(), result.end(), [](ChunkCoord a, ChunkCoord b) {
+            return World::Distance(a, {0, 0, 0}) < World::Distance(b, {0, 0, 0});
+        });
+
+        return result;
+    }();
+
+    return offsets;
+}
+
 // Integer floor division avoids both negative remainders and float precision loss.
 ChunkCoord BlockChunk(glm::ivec3 p) {
     constexpr int side = Options::World::CHUNK_SIZE;
@@ -124,10 +151,6 @@ void World::RemoveChunk(ChunkCoord coord) {
     }
 }
 
-void World::ClearMeshDirtyFlag(ChunkCoord coord) {
-    m_Chunks.at(coord).meshDirty = false;
-}
-
 std::optional<uint32_t> World::GetBlock(glm::ivec3 position) const {
     const auto coord = BlockChunk(position);
 
@@ -240,4 +263,52 @@ uint64_t World::GetNavigationRevision(ChunkCoord coord) const {
     const auto it = m_Chunks.find(coord);
 
     return it == m_Chunks.end() ? 0 : it->second.navigationRevision;
+}
+
+ChunkUpdates World::UpdateChunks(glm::vec3 position) {
+    MC_PROFILE_ZONE("Stream chunks");
+    ChunkUpdates updates;
+    const ChunkCoord player = World::ChunkCoordinate(position);
+
+    // Queue chunks for removal if they are outside the unload radius.
+    for (const auto& [coord, chunk] : m_Chunks) {
+        if (World::Distance(coord, player) > Options::World::UNLOAD_RADIUS_CHUNKS) {
+            updates.removed.push_back(coord);
+        }
+    }
+
+    // Remove chunks outside the unload radius.
+    for (const auto coord : updates.removed) {
+        RemoveChunk(coord);
+    }
+
+    uint32_t loaded = 0;
+    for (const auto offset : GetChunkLoadOffsets()) {
+        if (loaded == Options::World::MAX_CHUNKS_GENERATED_PER_FRAME) {
+            break;
+        }
+
+        const ChunkCoord coord = player + offset;
+        if (ContainsChunk(coord)) {
+            continue;
+        }
+
+        GenerateChunk(coord);
+        loaded++;
+    }
+
+    // Keep the voxel-only border and require all 26 neighbors, including AO corners.
+    for (auto& [coord, chunk] : m_Chunks) {
+        if (!chunk.meshDirty || !CanMeshChunk(coord, player)) {
+            continue;
+        }
+
+        updates.completed.push_back({coord, BuildChunkMesh(chunk.octree, GetChunkNeighbors(coord))});
+        chunk.meshDirty = false;
+    }
+
+    MC_PROFILE_PLOT("World chunks", static_cast<int64_t>(m_Chunks.size()));
+    MC_PROFILE_PLOT("Generated chunks", static_cast<int64_t>(loaded));
+
+    return updates;
 }

@@ -3,11 +3,23 @@
 #include "world/Chunk.h"
 #include "world/ChunkCoord.h"
 #include "world/TerrainGenerator.h"
+#include "meshing/ChunkMesh.h"
 
 #include <array>
 #include <cstddef>
 #include <unordered_map>
 #include <optional>
+#include <vector>
+
+struct CompletedChunkMesh {
+    ChunkCoord coord;
+    ChunkMesh mesh;
+};
+
+struct ChunkUpdates {
+    std::vector<ChunkCoord> removed;
+    std::vector<CompletedChunkMesh> completed;
+};
 
 struct BlockHit {
     glm::ivec3 position;
@@ -47,7 +59,7 @@ public:
 
     [[nodiscard]] bool CanMeshChunk(ChunkCoord coord, ChunkCoord player) const;
 
-    void ClearMeshDirtyFlag(ChunkCoord coord);
+    [[nodiscard]] ChunkUpdates UpdateChunks(glm::vec3 position);
     void GenerateChunk(ChunkCoord coord);
     void RemoveChunk(ChunkCoord coord);
 

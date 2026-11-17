@@ -3,7 +3,7 @@
 #include "game/Components.h"
 #include "rendering/Camera.h"
 #include "world/Block.h"
-#include "world/ChunkStreamer.h"
+#include "world/World.h"
 
 #include <entt/entity/registry.hpp>
 
@@ -59,7 +59,6 @@ private:
 private:
     World m_World;
     Camera m_Camera;
-    ChunkStreamer m_ChunkStreamer;
     entt::registry m_Registry;
     entt::entity m_Player = entt::null;
     uint32_t m_SelectedBlock = Blocks::Grass;

@@ -115,7 +115,6 @@ add_library(MinecraftCore STATIC
     src/rendering/passes/VoxelPass.cpp
 
     src/world/BlockRegistry.cpp
-    src/world/ChunkStreamer.cpp
     src/world/Octree.cpp
     src/world/TerrainGenerator.cpp
     src/world/World.cpp

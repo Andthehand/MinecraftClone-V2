@@ -43,7 +43,7 @@ bool GameScene::OnRender(const RealRHI::FrameContext& frame, Renderer& renderer,
 
     {
         const auto* player = GetPlayerTransform();
-        const auto updates = m_ChunkStreamer.Update(m_World, player->position);
+        const auto updates = m_World.UpdateChunks(player->position);
 
         if (!renderer.ApplyChunkUpdates(updates)) {
             return false;
@@ -54,10 +54,6 @@ bool GameScene::OnRender(const RealRHI::FrameContext& frame, Renderer& renderer,
 }
 
 void GameScene::UpdatePlayer(const Game::PlayerInput& input, float deltaTime) {
-    if (!std::isfinite(deltaTime) || deltaTime <= 0.0f) {
-        return;
-    }
-
     for (auto [entity, transform] : m_Registry.view<Game::PlayerControlled, Game::Transform>().each()) {
         const float cosPitch = glm::cos(transform.pitch);
         const glm::vec3 forward{cosPitch * glm::cos(transform.yaw), glm::sin(transform.pitch),
