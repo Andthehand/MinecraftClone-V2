@@ -71,14 +71,8 @@ void CaptureDebugMessage(const DebugMessage& message) {
 
 } // namespace
 
-Application::Application() = default;
-
-Application::~Application() {
-    MC_PROFILE_ZONE("Application shutdown");
-
-    if (m_Device) {
-        m_Device->WaitIdle();
-    }
+Application::Application() {
+    m_Running = Initialize();
 }
 
 bool Application::Initialize() {
@@ -152,38 +146,38 @@ bool Application::Initialize() {
     return true;
 }
 
-int Application::Run() {
-    if (!Initialize()) {
-        return 1;
-    }
+Application::~Application() {
+    MC_PROFILE_ZONE("Application shutdown");
 
+    if (m_Device) {
+        m_Device->WaitIdle();
+    }
+}
+
+int Application::Run() {
     auto previousFrameTime = std::chrono::steady_clock::now();
     m_FrameCounter.Reset();
 
-    while (true) {
-        {
-            MC_PROFILE_ZONE("Frame");
+    while (m_Running) {
+        MC_PROFILE_ZONE("Frame");
 
-            if (!ProcessEvents()) {
-                break;
-            }
+        ProcessEvents();
 
-            const auto currentFrameTime = std::chrono::steady_clock::now();
-            const float deltaTime = std::chrono::duration<float>(currentFrameTime - previousFrameTime).count();
-            previousFrameTime = currentFrameTime;
+        const auto currentFrameTime = std::chrono::steady_clock::now();
+        const float deltaTime = std::chrono::duration<float>(currentFrameTime - previousFrameTime).count();
+        previousFrameTime = currentFrameTime;
 
-            m_DebugUI.BeginFrame(m_Camera, *m_Renderer, m_SelectedBlock, m_LastFps);
-            OnUpdate(deltaTime);
+        m_DebugUI.BeginFrame(m_Camera, *m_Renderer, m_SelectedBlock, m_LastFps);
+        OnUpdate(deltaTime);
 
-            if (!m_DebugUI.EndFrame()) {
-                std::cerr << "Failed to render debug UI platform windows.\n";
+        if (!m_DebugUI.EndFrame()) {
+            std::cerr << "Failed to render debug UI platform windows.\n";
 
-                return 1;
-            }
+            return 1;
+        }
 
-            if (!OnRender(deltaTime)) {
-                return 1;
-            }
+        if (!OnRender(deltaTime)) {
+            return 1;
         }
 
         MC_PROFILE_FRAME();
@@ -192,9 +186,8 @@ int Application::Run() {
     return 0;
 }
 
-bool Application::ProcessEvents() {
+void Application::ProcessEvents() {
     MC_PROFILE_ZONE("Process events");
-    bool running = true;
     SDL_Event event;
 
     while (SDL_PollEvent(&event)) {
@@ -207,7 +200,7 @@ bool Application::ProcessEvents() {
 
         if (event.type == SDL_EVENT_QUIT ||
             (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && m_DebugUI.IsMainWindow(event.window.windowID))) {
-            running = false;
+            m_Running = false;
         }
 
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.scancode == SDL_SCANCODE_F3 && !event.key.repeat) {
@@ -234,8 +227,6 @@ bool Application::ProcessEvents() {
             }
         }
     }
-
-    return running;
 }
 
 void Application::EditBlock(float mouseX, float mouseY, int windowWidth, int windowHeight, bool place) {
@@ -271,25 +262,13 @@ bool Application::OnRender(float deltaTime) {
     MC_PROFILE_ZONE("Render frame");
 
     if (m_Window->IsMinimized() || m_Window->GetWidth() == 0 || m_Window->GetHeight() == 0) {
-        const bool secondaryDrawable = m_DebugUI.HasVisibleSecondaryWindows();
-
-        if (!secondaryDrawable) {
-            SDL_Delay(Options::Application::MINIMIZED_FRAME_DELAY_MS);
-        }
-
+        SDL_Delay(Options::Application::MINIMIZED_FRAME_DELAY_MS);
         m_FrameCounter.Reset();
 
         return true;
     }
 
     const FrameContext frame = m_Swapchain->BeginFrame();
-
-    if (!frame.backBufferView) {
-        std::cerr << "Failed to acquire a backbuffer.\n";
-
-        return false;
-    }
-
     m_Camera.SetAspectRatio(float(frame.width) / float(frame.height));
 
     {
@@ -301,19 +280,7 @@ bool Application::OnRender(float deltaTime) {
         }
     }
 
-    TextBatch text;
-    const int textScale = std::max(1, static_cast<int>(std::round(m_Window->GetDisplayScale() * 2)));
-    const auto& blocks = Blocks::Registry();
-    const auto shortcuts = std::min(size_t{9}, blocks.All().size() - 1);
-    const std::string label =
-        "Selected: " + blocks.Get(m_SelectedBlock).name + "  [1-" + std::to_string(shortcuts) + "]";
-    const auto labelSize = TextBatch::MeasureText(label, textScale);
-    text.DrawText(
-        label,
-        {std::round((float(frame.width) - labelSize.x) * 0.5f), float(frame.height) - labelSize.y - 12 * textScale},
-        textScale);
-
-    if (!m_Renderer->DrawFrame(frame, m_Camera, m_World, text, m_DebugUI)) {
+    if (!m_Renderer->DrawFrame(frame, m_Camera, m_World, m_DebugUI)) {
         return false;
     }
 

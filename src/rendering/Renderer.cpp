@@ -125,7 +125,7 @@ bool Renderer::CreateSkyShader() {
     return true;
 }
 
-bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const World& world, const TextBatch& text,
+bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const World& world,
                          DebugUI& ui) {
     MC_PROFILE_ZONE("Draw frame");
     RenderGraph graph;
@@ -145,11 +145,12 @@ bool Renderer::DrawFrame(const FrameContext& frame, const Camera& camera, const 
     const auto backbuffer = graph.ImportBackBuffer(m_Swapchain, frame);
     AddVoxelPass(graph, resources, frame, camera, backbuffer);
 
-    if (!m_TextRenderer.AddRenderPass(m_Device, graph, backbuffer, frame, m_Swapchain.GetBackBufferFormat(), text)) {
-        std::cerr << "Failed to prepare text rendering.\n";
+    // TODO: Re-add text renderer when f3 screen is implemented
+    //if (!m_TextRenderer.AddRenderPass(m_Device, graph, backbuffer, frame, m_Swapchain.GetBackBufferFormat(), text)) {
+    //    std::cerr << "Failed to prepare text rendering.\n";
 
-        return false;
-    }
+    //    return false;
+    //}
 
     if (!ui.AddRenderPass(graph, backbuffer, frame, m_Swapchain.GetBackBufferFormat())) {
         std::cerr << "Failed to prepare debug UI rendering.\n";

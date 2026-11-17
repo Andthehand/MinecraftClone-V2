@@ -24,7 +24,7 @@ public:
 
 private:
     bool Initialize();
-    bool ProcessEvents();
+    void ProcessEvents();
     void EditBlock(float mouseX, float mouseY, int windowWidth, int windowHeight, bool place);
 
 private:
@@ -39,6 +39,8 @@ private:
     ChunkStreamer m_ChunkStreamer;
     std::unique_ptr<Renderer> m_Renderer;
     DebugUI m_DebugUI;
+
+    bool m_Running = true;
 
     FrameCounter m_FrameCounter;
     uint32_t m_SelectedBlock = Blocks::Grass;
